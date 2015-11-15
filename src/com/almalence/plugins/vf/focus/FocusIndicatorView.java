@@ -17,8 +17,8 @@
 package com.almalence.plugins.vf.focus;
 
 /* <!-- +++
-import com.almalence.opencam_plus.R;
-+++ --> */
+ import com.almalence.opencam_plus.R;
+ +++ --> */
 // <!-- -+-
 import com.almalence.opencam.R;
 //-+- -->
@@ -28,36 +28,57 @@ import android.util.AttributeSet;
 import android.view.View;
 
 // A view that indicates the focus area or the metering area.
-public class FocusIndicatorView extends View implements FocusIndicator {
-    public FocusIndicatorView(Context context, AttributeSet attrs) {
-        super(context, attrs);
-    }
-    
-    public FocusIndicatorView(Context context) {
-        super(context);
-    }
+public class FocusIndicatorView extends View implements FocusIndicator
+{
+	private boolean isVisible = false;
+	public FocusIndicatorView(Context context, AttributeSet attrs)
+	{
+		super(context, attrs);
+	}
 
-    private void setDrawable(int resid) {
-        setBackgroundDrawable(getResources().getDrawable(resid));
-    }
+	public FocusIndicatorView(Context context)
+	{
+		super(context);
+	}
 
-    @Override
-    public void showStart() {
-        setDrawable(R.drawable.ic_focus_focusing);
-    }
+	private void setDrawable(int resid)
+	{
+		setBackgroundDrawable(getResources().getDrawable(resid));
+	}
 
-    @Override
-    public void showSuccess() {
-        setDrawable(R.drawable.ic_focus_focused);
-    }
+	@Override
+	public void showStart()
+	{
+		setDrawable(R.drawable.ic_focus_focusing);
+		setVisibility(View.VISIBLE);
+		isVisible = true;
+	}
 
-    @Override
-    public void showFail() {
-        setDrawable(R.drawable.ic_focus_failed);
-    }
+	@Override
+	public void showSuccess()
+	{
+		setDrawable(R.drawable.ic_focus_focused);
+		setVisibility(View.VISIBLE);
+		isVisible = true;
+	}
 
-    @Override
-    public void clear() {
-        setBackgroundDrawable(null);
-    }
+	@Override
+	public void showFail()
+	{
+		setDrawable(R.drawable.ic_focus_failed);
+		setVisibility(View.VISIBLE);
+		isVisible = true;
+	}
+
+	@Override
+	public void clear()
+	{
+		setBackgroundDrawable(null);
+		isVisible = false;
+	}
+	
+	@Override
+	public boolean isVisible() {
+		return isVisible;
+	}
 }

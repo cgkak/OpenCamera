@@ -49,6 +49,23 @@ JNIEXPORT jint JNICALL Java_com_almalence_SwapHeap_SwapToHeap
 	return (jint)heap;
 }
 
+JNIEXPORT jint JNICALL Java_com_almalence_SwapHeap_SwapYuvToHeap
+(
+	JNIEnv* env,
+	jobject,
+	jint jdata,
+	jint jdata_length
+)
+{
+	unsigned char *heap;
+
+	heap = (unsigned char *)malloc(jdata_length);
+	if (heap)
+		memcpy (heap, (unsigned char*)jdata, jdata_length);
+
+	return (jint)heap;
+}
+
 
 JNIEXPORT jbyteArray JNICALL Java_com_almalence_SwapHeap_CopyFromHeap
 (
@@ -69,7 +86,7 @@ JNIEXPORT jbyteArray JNICALL Java_com_almalence_SwapHeap_CopyFromHeap
 
 	memcpy (data, heap, jdata_length);
 
-	env->ReleaseByteArrayElements(jdata, (jbyte*)data, JNI_ABORT);
+	env->ReleaseByteArrayElements(jdata, (jbyte*)data, 0);
 
 	return jdata;
 }

@@ -114,54 +114,6 @@ void NV21toARGB(
     }
 }
 
-// Decode from JPEG to NV21 using skia lib
-/*int decodeFromJpeg(unsigned char *data, int len, int idx, int sx, int sy)
-{
-	int x, y;
-	Uint32 * pix;
-	Uint32 p1, p2;
-
-	SkBitmap bm;
-	SkBitmap::Config pref = SkBitmap::kARGB_8888_Config;
-
-	if (SkImageDecoder::DecodeMemory(data, len, &bm, pref, SkImageDecoder::kDecodePixels_Mode))
-	{
-		pix = (Uint32 *)bm.getPixels();
-
-		for (y=0; y<sy; ++y)
-		{
-			for (x=0; x<sx; x+=2)
-			{
-				p1 = pix[x+y*sx];
-				p2 = pix[x+1+y*sx];
-
-				inputFrame[idx][x+y*sx]             = CSC_Y(BMP_R(p1), BMP_G(p1), BMP_B(p1));
-				inputFrame[idx][x+1+y*sx]           = CSC_Y(BMP_R(p2), BMP_G(p2), BMP_B(p2));
-				inputFrame[idx][sx*sy+x+(y/2)*sx]   = CSC_V(BMP_R(p1), BMP_G(p1), BMP_B(p1));
-				inputFrame[idx][sx*sy+x+1+(y/2)*sx] = CSC_U(BMP_R(p2), BMP_G(p2), BMP_B(p2));
-			}
-
-			++y;
-			if (y<sy)
-			{
-				for (x=0; x<sx; x+=2)
-				{
-					p1 = pix[x+y*sx];
-					p2 = pix[x+1+y*sx];
-
-					inputFrame[idx][x+y*sx]   = CSC_Y(BMP_R(p1), BMP_G(p1), BMP_B(p1));
-					inputFrame[idx][x+1+y*sx] = CSC_Y(BMP_R(p2), BMP_G(p2), BMP_B(p2));
-				}
-			}
-		}
-		return 1;
-	}
-	else
-	{
-		return 0;
-	}
-}
-*/
 
 extern "C" JNIEXPORT jstring JNICALL Java_com_almalence_plugins_processing_sequence_AlmaCLRShot_Initialize
 (
@@ -267,11 +219,66 @@ extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_sequence
 	jpeg = (unsigned char**)env->GetIntArrayElements(in, NULL);
 	jpeg_length = (int*)env->GetIntArrayElements(in_len, NULL);
 
-	isFoundinInput = DecodeAndRotateMultipleJpegs(inputFrame, jpeg, jpeg_length, sx, sy, nFrames, 0, 0, 0);
+	isFoundinInput = DecodeAndRotateMultipleJpegs(inputFrame, jpeg, jpeg_length, sx, sy, nFrames, 0, 0, 0, true);
 
 	env->ReleaseIntArrayElements(in, (jint*)jpeg, JNI_ABORT);
 	env->ReleaseIntArrayElements(in_len, (jint*)jpeg_length, JNI_ABORT);
 
+	return isFoundinInput;
+}
+
+
+extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_sequence_AlmaCLRShot_addYUVFrames
+(
+	JNIEnv* env,
+	jobject thiz,
+	jintArray in,
+	jintArray in_len,
+	jint nFrames,
+	jint sx,
+	jint sy
+)
+{
+	int i;
+//	int *yuv_length;
+	unsigned char * *yuv;
+	char status[1024];
+	int isFoundinInput = 255;
+
+//	int x, y;
+//	int x0_out, y0_out, w_out, h_out;
+
+	yuv = (unsigned char**)env->GetIntArrayElements(in, NULL);
+//	yuv_length = (int*)env->GetIntArrayElements(in_len, NULL);
+
+	// pre-allocate uncompressed yuv buffers
+//	for (i=0; i<nFrames; ++i)
+//	{
+//		inputFrame[i] = (unsigned char*)malloc(sx*sy+2*((sx+1)/2)*((sy+1)/2));
+//
+//		if (inputFrame[i]==NULL)
+//		{
+//			isFoundinInput = i;
+//			i--;
+//			for (;i>=0;--i)
+//			{
+//				free(inputFrame[i]);
+//				inputFrame[i] = NULL;
+//			}
+//			break;
+//		}
+//
+//		memcpy(inputFrame[i], yuv[i], yuv_length[i]);
+//	}
+
+	for (i=0; i<nFrames; ++i)
+		inputFrame[i] = yuv[i];
+
+
+	env->ReleaseIntArrayElements(in, (jint*)yuv, JNI_ABORT);
+//	env->ReleaseIntArrayElements(in_len, (jint*)yuv_length, JNI_ABORT);
+
+	LOGD("frames total: %d\n", (int)nFrames);
 	return isFoundinInput;
 }
 
@@ -323,7 +330,7 @@ extern "C" JNIEXPORT jintArray JNICALL Java_com_almalence_plugins_processing_seq
 
 	NV21toARGB((Uint8 *)inptr, srcW, srcH, left, top, right - left, bottom - top, dstW, dstH, (Uint8 *)pixels);
 
-	env->ReleaseIntArrayElements(jpixels, (jint*)pixels, JNI_ABORT);
+	env->ReleaseIntArrayElements(jpixels, (jint*)pixels, 0);
 
 	LOGD("NV21toARGB - end");
 
@@ -369,12 +376,12 @@ extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_sequence
 	int fastmode = 0;
 
 	layout = (Uint8 *) malloc ((sx/ratio)*(sy/ratio)*sizeof(Uint8));
-	memset (layout, 0, (sx/ratio)*(sy/ratio)*sizeof(Uint8));
+	memset (layout, -1, (sx/ratio)*(sy/ratio)*sizeof(Uint8));
 
 	MovObj_Process(&instance, inputFrame, OutPic, layout, NULL, 256, sx, sy, nFrames,
 			sensitivity, minSize,	// sensitivity and min size of moving object
 			5, ghosting,//ghosting,
-			1, // extraBorder
+			0, // 1, // extraBorder
 			use_sports_mode, sports_mode_order,
 			0, 0, 2,	// 2 = keep aspect ratio in output
 			&base_area[0], &base_area[1], &base_area[2], &base_area[3],
@@ -383,7 +390,7 @@ extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_sequence
 
 	free(layout);
 
-	env->ReleaseIntArrayElements(jcrop, (jint*)crop, JNI_ABORT);
+	env->ReleaseIntArrayElements(jcrop, (jint*)crop, 0);
 	env->ReleaseIntArrayElements(jsports_order, (jint*)sports_mode_order, JNI_ABORT);
 
 	LOGD("MovObjProcess - end");

@@ -14,74 +14,70 @@ The Original Code is collection of files collectively known as Open Camera.
 The Initial Developer of the Original Code is Almalence Inc.
 Portions created by Initial Developer are Copyright (C) 2013 
 by Almalence Inc. All Rights Reserved.
-*/
+ */
 
 package com.almalence.plugins.processing.night;
 
 import android.content.SharedPreferences;
-import android.graphics.Bitmap;
+import android.os.Build;
 import android.preference.PreferenceManager;
-import android.util.Log;
-
-import com.almalence.SwapHeap;
 import com.almalence.asynctaskmanager.OnTaskCompleteListener;
 
 /* <!-- +++
-import com.almalence.opencam_plus.MainScreen;
-import com.almalence.opencam_plus.PluginManager;
-import com.almalence.opencam_plus.PluginProcessing;
-import com.almalence.opencam_plus.R;
-+++ --> */
+ import com.almalence.opencam_plus.ApplicationScreen;
+ import com.almalence.opencam_plus.ConfigParser;
+ import com.almalence.opencam_plus.PluginManager;
+ import com.almalence.opencam_plus.PluginProcessing;
+ import com.almalence.opencam_plus.R;
+ import com.almalence.opencam_plus.cameracontroller.CameraController;
+ +++ --> */
 // <!-- -+-
-import com.almalence.opencam.MainScreen;
+import com.almalence.opencam.ApplicationScreen;
+import com.almalence.opencam.ConfigParser;
 import com.almalence.opencam.PluginManager;
 import com.almalence.opencam.PluginProcessing;
 import com.almalence.opencam.R;
+import com.almalence.opencam.cameracontroller.CameraController;
+
 //-+- -->
 
-import com.almalence.util.ImageConversion;
-
 /***
-Implements night processing
-***/
+ * Implements night processing
+ ***/
 
 public class NightProcessingPlugin extends PluginProcessing implements OnTaskCompleteListener
 {
-	static public boolean preview_computing = false;
-	static public boolean processing_computing = false;
-	static public boolean should_save = true;
-	static public boolean should_unload = true;
-	static public boolean hdr_processing_returned = false;
-	static public Bitmap PreviewBmp;			// on-screen preview
-	public int yuv;						// fused result
-	static public int[] crop = new int[4];
-	
-	public static int HI_SPEED_FRAMES = 12;
+	// fused result
+	private int				yuv;
+	private static int[]	crop				= new int[4];
 
-	public static long PREVIEW_TIME = 3000;
+	private long			sessionID			= 0;
 
-    private long sessionID=0;
-    
-    //night preferences
-    public String NoisePreference;
-    public String GhostPreference;
-    public Boolean SaturatedColors;
-    
-    private int mDisplayOrientation = 0;
-	private boolean mCameraMirrored = false;
-	
-	private int mImageWidth;
-	private int mImageHeight;
-    
+	// night preferences
+	private String			NoisePreference;
+	private String			GhostPreference;
+	private Boolean			SaturatedColors;
+
+	// super preferences
+	private float			fGamma;
+	private boolean			upscaleResult;
+
+	private int				mDisplayOrientation	= 0;
+	private boolean			mCameraMirrored		= false;
+	private int				cameraIndex			= 0;
+
+	private int				mImageWidth;
+	private int				mImageHeight;
+
+	private int				mOutImageWidth;
+	private int				mOutImageHeight;
+
 	public NightProcessingPlugin()
 	{
-		super("com.almalence.plugins.nightprocessing",
-			  R.xml.preferences_processing_night,
-			  R.xml.preferences_processing_night,
-			  0,
-			  null);
+		super("com.almalence.plugins.nightprocessing", "nightmode", R.xml.preferences_processing_night,
+				R.xml.preferences_processing_night, 0, null);
 	}
-	
+
 	@Override
 	public void onStart()
 	{
@@ -89,137 +85,136 @@ public class NightProcessingPlugin extends PluginProcessing implements OnTaskCom
 	}
 
 	@Override
-	public void onStartProcessing(long SessionID) 
+	public void onStartProcessing(long SessionID)
 	{
-		sessionID=SessionID;
-		
-		PluginManager.getInstance().addToSharedMem("modeSaveName"+Long.toString(sessionID), PluginManager.getInstance().getActiveMode().modeSaveName);
-		
-		mDisplayOrientation = Integer.parseInt(PluginManager.getInstance().getFromSharedMem("frameorientation1" + Long.toString(sessionID)));
-		mCameraMirrored = MainScreen.getCameraMirrored();
-		
-		mImageWidth = MainScreen.getImageWidth();
-		mImageHeight = MainScreen.getImageHeight();
-		
-		int iSaveImageWidth = MainScreen.getSaveImageWidth();
-		int iSaveImageHeight = MainScreen.getSaveImageHeight();
-		
+		sessionID = SessionID;
+
+		if (CameraController.isUseCamera2())
+		{
+			PluginManager.getInstance().addToSharedMem("modeSaveName" + sessionID,
+					ConfigParser.getInstance().getMode(mode).modeSaveNameHAL);
+		} else
+		{
+			PluginManager.getInstance().addToSharedMem("modeSaveName" + sessionID,
+					ConfigParser.getInstance().getMode(mode).modeSaveName);
+		}
+
+		mDisplayOrientation = Integer.parseInt(PluginManager.getInstance().getFromSharedMem(
+				"frameorientation1" + sessionID));
+		mCameraMirrored = Boolean.parseBoolean(PluginManager.getInstance().getFromSharedMem(
+				"cameraMirrored" + sessionID));
+
+		mImageWidth = Integer.parseInt(PluginManager.getInstance().getFromSharedMem("imageWidth" + sessionID));
+		mImageHeight = Integer.parseInt(PluginManager.getInstance().getFromSharedMem("imageHeight" + sessionID));
+
+		mOutImageWidth = mImageWidth;
+		mOutImageHeight = mImageHeight;
+
+		if (CameraController.isUseCamera2())
+		{
+			if (upscaleResult)
+			{
+				mOutImageWidth = mOutImageWidth * 3 / 2;
+				mOutImageWidth -= mOutImageWidth & 3;
+
+				mOutImageHeight = mOutImageHeight * 3 / 2;
+				mOutImageHeight -= mOutImageHeight & 3;
+			}
+		}
+
+		cameraIndex = 100;
+		// camera indexes in libalmalib corresponding to models
+		if (CameraController.isNexus5)
+			cameraIndex = 100;
+		if (CameraController.isNexus6)
+			cameraIndex = 103;
+		if (CameraController.isFlex2)
+			cameraIndex = 507;
+//		if (CameraController.isG4)
+//			cameraIndex = 506;
+
 		AlmaShotNight.Initialize();
 
-		//start night processing
-		nightPreview();
-		
+		// start night processing
 		nightProcessing();
-		
-		if(mDisplayOrientation == 180 || mDisplayOrientation == 270)
-		{
-			int yuv_lenght = mImageWidth*mImageHeight+2*((mImageWidth+1)/2)*((mImageHeight+1)/2);
-			int mode = Integer.parseInt(PluginManager.getInstance().getFromSharedMem("nightmode"+Long.toString(sessionID)));	    	
-	    	if (mode == 1)
-	    		yuv_lenght = mImageWidth*2*mImageHeight*2+2*((mImageWidth*2+1)/2)*((mImageHeight*2+1)/2);
-			
-			byte[] yuv_data = SwapHeap.SwapFromHeap(yuv, yuv_lenght);
-			
-			byte[] dataRotated = new byte[yuv_data.length];
-			if (mode == 1)
-				ImageConversion.TransformNV21(yuv_data, dataRotated, mImageWidth*2, mImageHeight*2, 1, 1, 0);
-			else
-				ImageConversion.TransformNV21(yuv_data, dataRotated, mImageWidth, mImageHeight, 1, 1, 0);
-			
-			yuv = SwapHeap.SwapToHeap(dataRotated);
-		}
-		
-		PluginManager.getInstance().addToSharedMem("resultfromshared"+Long.toString(sessionID), "false");
-		PluginManager.getInstance().addToSharedMem("resultcrop0"+Long.toString(sessionID), String.valueOf(NightProcessingPlugin.crop[0]));
-		PluginManager.getInstance().addToSharedMem("resultcrop1"+Long.toString(sessionID), String.valueOf(NightProcessingPlugin.crop[1]));
-		PluginManager.getInstance().addToSharedMem("resultcrop2"+Long.toString(sessionID), String.valueOf(NightProcessingPlugin.crop[2]));
-		PluginManager.getInstance().addToSharedMem("resultcrop3"+Long.toString(sessionID), String.valueOf(NightProcessingPlugin.crop[3]));
-	
-		PluginManager.getInstance().addToSharedMem("writeorientationtag"+Long.toString(sessionID), "false");
-    	PluginManager.getInstance().addToSharedMem("resultframeorientation1" + String.valueOf(sessionID), String.valueOf(mDisplayOrientation));
-    	PluginManager.getInstance().addToSharedMem("resultframemirrored1" + String.valueOf(sessionID), String.valueOf(mCameraMirrored));
-		PluginManager.getInstance().addToSharedMem("amountofresultframes"+Long.toString(sessionID), "1");
-    	PluginManager.getInstance().addToSharedMem("resultframe1"+Long.toString(sessionID), String.valueOf(yuv));
-    	
-		PluginManager.getInstance().addToSharedMem("saveImageWidth"+String.valueOf(sessionID), String.valueOf(iSaveImageWidth));
-    	PluginManager.getInstance().addToSharedMem("saveImageHeight"+String.valueOf(sessionID), String.valueOf(iSaveImageHeight));
-	}
-			
-	
-	private void nightPreview()
-	{
-    	int imagesAmount = Integer.parseInt(PluginManager.getInstance().getFromSharedMem("amountofcapturedframes"+Long.toString(sessionID)));
-    	
-    	int compressed_frame[] = new int[imagesAmount];
-        int compressed_frame_len[] = new int[imagesAmount];
 
-		for (int i=0; i<imagesAmount; i++)
-		{
-			compressed_frame[i] = Integer.parseInt(PluginManager.getInstance().getFromSharedMem("frame" + (i+1)+Long.toString(sessionID)));
-			compressed_frame_len[i] = Integer.parseInt(PluginManager.getInstance().getFromSharedMem("framelen" + (i+1)+Long.toString(sessionID)));
-		}
-		
-		int mode = Integer.parseInt(PluginManager.getInstance().getFromSharedMem("nightmode"+Long.toString(sessionID)));
-    	
-    	if(mode == 1)
-    	{
-    		AlmaShotNight.SuperZoomPreview(compressed_frame, NightProcessingPlugin.HI_SPEED_FRAMES, mImageWidth, mImageHeight, 
-    				mImageWidth*2, mImageHeight*2,
-    				Integer.parseInt(NoisePreference), Integer.parseInt(GhostPreference), SaturatedColors? 1 : 0,
-    				1);
-    	}
-    	else
-    	{
-            try
-            {
-        	AlmaShotNight.ConvertFromJpeg(
-        			compressed_frame,
-        			compressed_frame_len,
-        			imagesAmount,
-        			mImageWidth, mImageHeight);
-            }
-            catch(RuntimeException exp)
-            {
-            	Log.e("NIGHT CAMERA DEBUG", "PreviewTask.doInBackground AlmaShot.ConvertFromJpeg EXCEPTION = " + exp.getMessage());	
-            }
-        	
-    		
-    		AlmaShotNight.BlurLessPreview(mImageWidth, mImageHeight,
-    			Integer.parseInt(NoisePreference), Integer.parseInt(GhostPreference),
-    			9, SaturatedColors? 9 : 0,
-    			imagesAmount);
-    	}
-    	System.gc();
+		PluginManager.getInstance().addToSharedMem("resultfromshared" + sessionID, "true");
+		PluginManager.getInstance().addToSharedMem("resultcrop0" + sessionID,
+				String.valueOf(NightProcessingPlugin.crop[0]));
+		PluginManager.getInstance().addToSharedMem("resultcrop1" + sessionID,
+				String.valueOf(NightProcessingPlugin.crop[1]));
+		PluginManager.getInstance().addToSharedMem("resultcrop2" + sessionID,
+				String.valueOf(NightProcessingPlugin.crop[2]));
+		PluginManager.getInstance().addToSharedMem("resultcrop3" + sessionID,
+				String.valueOf(NightProcessingPlugin.crop[3]));
+
+		PluginManager.getInstance().addToSharedMem("writeorientationtag" + sessionID, "false");
+		PluginManager.getInstance().addToSharedMem("resultframeorientation1" + sessionID,
+				String.valueOf(mDisplayOrientation));
+		PluginManager.getInstance().addToSharedMem("resultframemirrored1" + sessionID, String.valueOf(mCameraMirrored));
+		PluginManager.getInstance().addToSharedMem("amountofresultframes" + sessionID, "1");
+		PluginManager.getInstance().addToSharedMem("resultframe1" + sessionID, String.valueOf(yuv));
+
+		PluginManager.getInstance().addToSharedMem("saveImageWidth" + sessionID, String.valueOf(mOutImageWidth));
+		PluginManager.getInstance().addToSharedMem("saveImageHeight" + sessionID, String.valueOf(mOutImageHeight));
 	}
-	
+
 	private void nightProcessing()
 	{
-    	int mode = Integer.parseInt(PluginManager.getInstance().getFromSharedMem("nightmode"+Long.toString(sessionID)));
-    	
-    	if (mode == 1)
-    	{
-    		yuv = AlmaShotNight.SuperZoomProcess(mImageWidth*2, mImageHeight*2, NightProcessingPlugin.crop, mDisplayOrientation == 90 || mDisplayOrientation == 270, mCameraMirrored);
-    	}
-    	else
-    	{
-			yuv = AlmaShotNight.BlurLessProcess(mImageWidth, mImageHeight, NightProcessingPlugin.crop, mDisplayOrientation == 90 || mDisplayOrientation == 270, mCameraMirrored);
-    	}
-    	
-    	AlmaShotNight.Release();
+		int imagesAmount = Integer.parseInt(PluginManager.getInstance().getFromSharedMem(
+				"amountofcapturedframes" + sessionID));
+
+		int[] frames = new int[imagesAmount];
+
+		for (int i = 0; i < imagesAmount; i++)
+		{
+			frames[i] = Integer.parseInt(PluginManager.getInstance().getFromSharedMem("frame" + (i + 1) + sessionID));
+		}
+
+		AlmaShotNight.NightAddYUVFrames(frames, imagesAmount, mImageWidth, mImageHeight);
+
+		float zoom = Float.parseFloat(PluginManager.getInstance().getFromSharedMem("zoom" + sessionID));
+		boolean isSuperMode = Boolean.parseBoolean(PluginManager.getInstance().getFromSharedMem(
+				"isSuperMode" + sessionID));
+		int sensorGain = Integer.parseInt(PluginManager.getInstance().getFromSharedMem("burstGain" + sessionID));
+
+		if (CameraController.isNexus6 && CameraController.isFrontCamera())
+		{
+			if (mDisplayOrientation == 0 || mDisplayOrientation == 90)
+				mDisplayOrientation += 180;
+			else if (mDisplayOrientation == 180 || mDisplayOrientation == 270)
+				mDisplayOrientation -= 180;
+		}
+
+		yuv = AlmaShotNight.Process(mImageWidth, mImageHeight, mOutImageWidth, mOutImageHeight, sensorGain,
+				Integer.parseInt(NoisePreference), Integer.parseInt(GhostPreference), 9, SaturatedColors ? 9 : 0,
+				fGamma, imagesAmount, NightProcessingPlugin.crop, mDisplayOrientation, mCameraMirrored, zoom,
+				cameraIndex, isSuperMode);
+
+		AlmaShotNight.Release();
 	}
 
 	private void getPrefs()
-    {
-        // Get the xml/preferences.xml preferences
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainScreen.thiz.getBaseContext());
-        NoisePreference = prefs.getString("noisePrefNight", "0");
-        GhostPreference = prefs.getString("ghostPrefNight", "1");
-        SaturatedColors = prefs.getBoolean("keepcolorsPref", true);
-    }
+	{
+		// Get the xml/preferences.xml preferences
+		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ApplicationScreen.instance
+				.getBaseContext());
+		NoisePreference = prefs.getString("noisePrefNight", "0");
+		GhostPreference = prefs.getString("ghostPrefNight", "1");
+		SaturatedColors = prefs.getBoolean("keepcolorsPref", true);
+
+		fGamma = prefs.getFloat("gammaPref", 0.5f);
+		upscaleResult = prefs.getBoolean("upscaleResult", false);
+	}
 
 	@Override
-	public boolean isPostProcessingNeeded(){return false;}
+	public boolean isPostProcessingNeeded()
+	{
+		return false;
+	}
 
 	@Override
-	public void onStartPostProcessing(){}
+	public void onStartPostProcessing()
+	{
+	}
 }

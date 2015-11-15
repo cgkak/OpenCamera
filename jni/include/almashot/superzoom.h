@@ -31,7 +31,7 @@
  SPECIAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE, MISUSE OR
  INABILITY TO USE THE SOFTWARE OR RELATED DOCUMENTATION.
 
- COPYRIGHT 2010-2012, ALMALENCE, INC.
+ COPYRIGHT 2010-2014, ALMALENCE, INC.
 
  ---------------------------------------------------------------------------
 
@@ -51,13 +51,13 @@ extern "C"
 #include "almashot.h"
 
 // Maximum accepted input frames
-#define SUPERZOOM_MAX_FRAMES	20
+#define SUPERZOOM_MAX_FRAMES	15
 
 // Input frames should be that much larger at each edge
 // to provide expected zoom level when SizeGuaranteeMode is set
 #define SIZE_GUARANTEE_BORDER	64
 
-#define SPARE_LINES_RESOLVE_FRAME	656
+#define SPARE_LINES_RESOLVE_FRAME	658 // 656
 
 // -------------------------------------------------------------------
 // Still image superzoom functions
@@ -70,6 +70,7 @@ int SuperZoom_Preview
 	Uint8 * restrict Preview,
 	int     sx,
 	int     sy,
+	int     stride,
 	int     sxo,
 	int     syo,
 	int     sxp,
@@ -102,6 +103,12 @@ int SuperZoom_Process
 	int		*h_out
 );
 
+// Cancel superzoom processing (stop SuperZoom_Process)
+void SuperZoom_CancelProcessing
+(
+	void  * instance
+);
+
 // SuperZoom_FreeInstance - can be called after SuperZoom_Preview instead of SuperZoom_Process
 // if full-size processing is not needed.
 // Set keepBuffers to non-zero to keep input frame buffers and only free processing instance.
@@ -120,13 +127,10 @@ int SuperZoom_StartStreaming
 	void  **instance,
 	int		sx,
 	int		sy,
+	int		stride,
 	int		sxo,
 	int		syo,
-	int     SensorGain,
-	int     DeGhostGain,
 	int     DeGhostFrames,
-	int     kelvin1,
-	int     kelvin2,
 	int		noSres,
 	int     cameraIndex
 );
@@ -147,6 +151,10 @@ int SuperZoom_ResolveFrame
 	int		*h_out,
 	int		 nImages,
 	int      nRefImage,
+	int      SensorGain,
+	int      MovObjGain,
+	int      kelvin1,
+	int      kelvin2,
 	int		 enh_edges
 );
 

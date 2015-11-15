@@ -19,9 +19,6 @@
     plugin id - real unique plugin id which is set in plugin ctor
      -->
 
-	<!--  Default plugin for initial start -->     
-    <defaultmode id="single"/>
-     
 	<mode id="single" name="single_mode_name" savename="">
 		<icon		id="gui_almalence_mode_single"/>
 
@@ -32,6 +29,7 @@
 	    <vf 		id="com.almalence.plugins.focusvf"/>
 	    <vf 		id="com.almalence.plugins.infosetvf"/>
 	    <vf 		id="com.almalence.plugins.aeawlockvf"/>
+	    <vf 		id="com.almalence.plugins.gyrovf"/>
 	
 	    <capture 	id="com.almalence.plugins.capture" />    
 	
@@ -46,31 +44,7 @@
 		<howtotext  id=""/>
 		
 	</mode>
-	<!-- 
-	<mode id="selftimer" name="selftimer_mode_name"  savename="">
 	
-	    <icon		id="gui_almalence_mode_selftimer"/>
-	    
-	    <vf 		id="com.almalence.plugins.gridvf"/>
-	    <vf 		id="com.almalence.plugins.zoomvf"/>
-	    <vf 		id="com.almalence.plugins.focusvf"/>
-	    <vf 		id="com.almalence.plugins.histogramvf"/>
-	    <vf 		id="com.almalence.plugins.barcodescannervf"/>
-	    <vf 		id="com.almalence.plugins.infosetvf"/>
-	    <vf 		id="com.almalence.plugins.aeawlockvf"/>      
-	
-	    <capture 	id="com.almalence.plugins.selftimercapture" />    
-	
-	    <processing	id="com.almalence.plugins.simpleprocessing"/>    
-	
-	    <export 	id="com.almalence.plugins.export"/>
-
-		<sku/>
-		
-		<howtotext  id=""/>
-		
-	</mode> 
-	 -->
 	<mode id="burstmode" name="burst_mode_name"  savename="">
 	    
 	    <icon		id="gui_almalence_mode_burst"/>
@@ -82,6 +56,7 @@
 	    <vf 		id="com.almalence.plugins.focusvf"/>
 	    <vf 		id="com.almalence.plugins.infosetvf"/>
 	    <vf 		id="com.almalence.plugins.aeawlockvf"/>   
+	    <vf 		id="com.almalence.plugins.gyrovf"/>
 	
 	    <capture 	id="com.almalence.plugins.burstcapture" />    
 	
@@ -106,6 +81,7 @@
 	    <vf 		id="com.almalence.plugins.focusvf"/>
 	    <vf 		id="com.almalence.plugins.infosetvf"/>
 	    <vf 		id="com.almalence.plugins.aeawlockvf"/>
+	    <vf 		id="com.almalence.plugins.gyrovf"/>
 	
 	    <capture 	id="com.almalence.plugins.expobracketingcapture" />    
 	
@@ -130,6 +106,7 @@
 	    <vf 		id="com.almalence.plugins.focusvf"/>
 	    <vf 		id="com.almalence.plugins.infosetvf"/>
 	    <vf 		id="com.almalence.plugins.aeawlockvf"/>
+	    <vf 		id="com.almalence.plugins.gyrovf"/>
 	
 	    <capture 	id="com.almalence.plugins.expobracketingcapture" />    
 	
@@ -145,15 +122,17 @@
 	
 	</mode>
 	
-	<mode id="nightmode" name="night_mode_name"  savename="NIGHT">
+	<mode id="nightmode" name="night_mode_name"  savename="NIGHT" nameHAL="super_mode_name"  savenameHAL="SUPER">
 	
 	    <icon		id="gui_almalence_mode_night"/>
+	    <iconHAL	id="gui_almalence_mode_super"/>
 	    
 	    <vf 		id="com.almalence.plugins.gridvf"/>
 		<vf 		id="com.almalence.plugins.zoomvf"/>
 		<vf 		id="com.almalence.plugins.focusvf"/>
 		<vf 		id="com.almalence.plugins.infosetvf"/>
 		<vf 		id="com.almalence.plugins.aeawlockvf"/>
+		<vf 		id="com.almalence.plugins.gyrovf"/>
 		
 	    <capture 	id="com.almalence.plugins.nightcapture" />    
 	
@@ -165,7 +144,7 @@
 		
 		<howtotext  id=""/>
 
-		<sku/>		
+		<sku 		id="plugin_almalence_super"/>		
 	</mode>
 	
 	<mode id="video" name="video_mode_name"  savename="">
@@ -177,6 +156,7 @@
 	    <vf 		id="com.almalence.plugins.infosetvf"/>
 	    <vf 		id="com.almalence.plugins.focusvf"/>
 	    <vf 		id="com.almalence.plugins.aeawlockvf"/>
+	    <vf 		id="com.almalence.plugins.gyrovf"/>
 	
 	    <capture 	id="com.almalence.plugins.videocapture" />    
 	
@@ -186,13 +166,13 @@
 	
 	    <export 	id="com.almalence.plugins.export"/>
 
-		<sku/>
+		<sku		id="plugin_almalence_video"/>
 		
 		<howtotext  id=""/>
 			
 	</mode>
 	 
-	<mode id="pixfix" name="preshot_mode_name"  savename="PRESHOT">
+	<mode id="preshot" name="preshot_mode_name"  savename="PRESHOT">
 	
 	    <icon		id="gui_almalence_mode_backintime"/>
 	    
@@ -203,6 +183,7 @@
 	    <vf 		id="com.almalence.plugins.focusvf"/>
 	    <vf 		id="com.almalence.plugins.infosetvf"/>
 	    <vf 		id="com.almalence.plugins.aeawlockvf"/>
+	    <vf 		id="com.almalence.plugins.gyrovf"/>
 	
 	    <capture 	id="com.almalence.plugins.preshotcapture" />    
 	
@@ -218,7 +199,7 @@
 			
 	</mode>
 	
-	<mode id="movingobjects" name="objectremoval_mode_name"  savename="OR">
+	<mode id="multishot" name="multishot_mode_name"  savename="MS">
 	
 	    <icon		id="gui_almalence_mode_moving"/>
 	    
@@ -228,66 +209,17 @@
 	    <vf 		id="com.almalence.plugins.focusvf"/>
 	    <vf 		id="com.almalence.plugins.infosetvf"/>
 	    <vf 		id="com.almalence.plugins.aeawlockvf"/>
+	    <vf 		id="com.almalence.plugins.gyrovf"/>
 	
-	    <capture 	id="com.almalence.plugins.objectremovalcapture" />    
+	    <capture 	id="com.almalence.plugins.multishotcapture" />    
 	
-	    <processing id="com.almalence.plugins.objectremovalprocessing"/>    
-	
-	    <filter/>    
-	
-	    <export 	id="com.almalence.plugins.export"/>
-
-		<sku		id="plugin_almalence_moving_burst"/>
-		
-		<howtotext  id=""/>
-			
-	</mode>
-	
-	<mode id="groupshot" name="groupshot_mode_name"  savename="GS">
-	
-	    <icon		id="gui_almalence_mode_groupshot"/>
-	    
-	    <vf 		id="com.almalence.plugins.gridvf"/>
-	    <vf 		id="com.almalence.plugins.zoomvf"/>   
-	    <vf 		id="com.almalence.plugins.histogramvf"/>
-	    <vf 		id="com.almalence.plugins.focusvf"/>
-	    <vf 		id="com.almalence.plugins.infosetvf"/>
-	    <vf 		id="com.almalence.plugins.aeawlockvf"/>
-	
-	    <capture 	id="com.almalence.plugins.groupshotcapture" />
-	
-	    <processing id="com.almalence.plugins.groupshotprocessing"/>    
+	    <processing id="com.almalence.plugins.multishotprocessing"/>    
 	
 	    <filter/>    
 	
 	    <export 	id="com.almalence.plugins.export"/>
 
-		<sku		id="plugin_almalence_groupshot"/>
-		
-		<howtotext  id=""/>
-			
-	</mode>
-	
-	<mode id="sequence" name="sequence_mode_name"  savename="SEQ">
-	
-	    <icon		id="gui_almalence_mode_sequence"/>
-	    
-	    <vf 		id="com.almalence.plugins.gridvf"/>
-	    <vf 		id="com.almalence.plugins.zoomvf"/>   
-	    <vf 		id="com.almalence.plugins.histogramvf"/>
-	    <vf 		id="com.almalence.plugins.focusvf"/>
-	    <vf 		id="com.almalence.plugins.infosetvf"/>
-	    <vf 		id="com.almalence.plugins.aeawlockvf"/>
-	
-	    <capture 	id="com.almalence.plugins.sequencecapture" />
-	
-	    <processing id="com.almalence.plugins.sequenceprocessing"/>    
-	
-	    <filter/>    
-	
-	    <export 	id="com.almalence.plugins.export"/>
-
-		<sku		id="plugin_almalence_moving_burst"/>
+		<sku		id="plugin_almalence_multishot"/>
 		
 		<howtotext  id=""/>
 			
@@ -302,6 +234,7 @@
 	    <vf 		id="com.almalence.plugins.focusvf"/>
 	    <vf 		id="com.almalence.plugins.infosetvf"/>
 	    <vf 		id="com.almalence.plugins.aeawlockvf"/>
+	    <vf 		id="com.almalence.plugins.gyrovf"/>
 	
 	    <capture 	id="com.almalence.plugins.panoramacapture_augmented" />
 	
@@ -316,29 +249,6 @@
 		<howtotext  id=""/>
 	</mode>
 
-<!-- 
-	<mode id="hires_portrait" name="hiresportrait_mode_name"  savename="PRT">
-	
-	    <icon		id="gui_almalence_mode_hiresportrait"/>
-	    
-	    <vf 		id="com.almalence.plugins.gridvf"/>
-	    <vf 		id="com.almalence.plugins.histogramvf"/>
-	    <vf 		id="com.almalence.plugins.focusvf"/>
-	    <vf 		id="com.almalence.plugins.infosetvf"/>
-	
-	    <capture 	id="com.almalence.plugins.hiresportraitcapture" />
-	
-	    <processing id="com.almalence.plugins.hiresportraitprocessing"/>    
-	
-	    <filter/>    
-	
-	    <export 	id="com.almalence.plugins.export"/>
-
-		<sku		id=""/>
-		
-		<howtotext  id=""/>
-	</mode>
-	-->
 	<mode id="bestshotmode" name="bestshot_mode_name"  savename="BEST">
 	    
 	    <icon		id="gui_almalence_mode_bestshot"/>
@@ -349,6 +259,7 @@
 	    <vf 		id="com.almalence.plugins.focusvf"/>
 	    <vf 		id="com.almalence.plugins.infosetvf"/>
 	    <vf 		id="com.almalence.plugins.aeawlockvf"/>   
+	    <vf 		id="com.almalence.plugins.gyrovf"/>
 	
 	    <capture 	id="com.almalence.plugins.bestshotcapture" />    
 	
@@ -363,5 +274,8 @@
 		<howtotext  id=""/>
 		
 	</mode>
+	
+	<!--  Default plugin for initial start -->     
+    <defaultmode id="single"/>
 
 </config>	

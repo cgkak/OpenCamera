@@ -14,305 +14,214 @@ The Original Code is collection of files collectively known as Open Camera.
 The Initial Developer of the Original Code is Almalence Inc.
 Portions created by Initial Developer are Copyright (C) 2013 
 by Almalence Inc. All Rights Reserved.
-*/
+ */
 
 package com.almalence.plugins.capture.bestshot;
 
-import java.util.Date;
+import java.util.Arrays;
 
+import android.annotation.TargetApi;
 import android.content.SharedPreferences;
-import android.content.SharedPreferences.Editor;
-import android.hardware.Camera;
-import android.hardware.Camera.Parameters;
-import android.os.CountDownTimer;
-import android.os.Message;
 import android.preference.PreferenceManager;
 import android.util.Log;
+import android.hardware.camera2.CaptureResult;
 
 /* <!-- +++
-import com.almalence.opencam_plus.MainScreen;
-import com.almalence.opencam_plus.PluginCapture;
-import com.almalence.opencam_plus.PluginManager;
-import com.almalence.opencam_plus.R;
-+++ --> */
-// <!-- -+-
-import com.almalence.opencam.MainScreen;
+ import com.almalence.opencam_plus.cameracontroller.CameraController;
+ import com.almalence.opencam_plus.ui.GUI.CameraParameter;
+ import com.almalence.opencam_plus.CameraParameters;
+ import com.almalence.opencam_plus.ApplicationScreen;
+ import com.almalence.opencam_plus.ApplicationInterface;
+ import com.almalence.opencam_plus.PluginCapture;
+ import com.almalence.opencam_plus.PluginManager;
+ import com.almalence.opencam_plus.R;
+ +++ --> */
+//<!-- -+-
+import com.almalence.opencam.cameracontroller.CameraController;
+import com.almalence.opencam.ui.GUI.CameraParameter;
+import com.almalence.opencam.ApplicationInterface;
+import com.almalence.opencam.CameraParameters;
+import com.almalence.opencam.ApplicationScreen;
 import com.almalence.opencam.PluginCapture;
 import com.almalence.opencam.PluginManager;
 import com.almalence.opencam.R;
+
 //-+- -->
 
-import com.almalence.SwapHeap;
-
 /***
-Implements burst capture plugin - captures predefined number of images
-***/
+ * Implements burst capture plugin - captures predefined number of images
+ ***/
 
 public class BestShotCapturePlugin extends PluginCapture
 {
-	private boolean takingAlready=false;
-		
-    //defaul val. value should come from config
-	private int imageAmount = 5;
+	// defaul val. value should come from config
+	private int	imageAmount	= 5;
+	private int	preferenceFlashMode;
 
-    private boolean inCapture;
-    private int imagesTaken=0;
-	
 	public BestShotCapturePlugin()
 	{
-		super("com.almalence.plugins.bestshotcapture",
-			  R.xml.preferences_capture_bestshot,
-			  0,
-			  R.drawable.gui_almalence_mode_bestshot,
-			  "Best Shot images");
-
-		//refreshPreferences();
+		super("com.almalence.plugins.bestshotcapture", 0, 0, 0, null);
 	}
-	
+
+	@Override
+	public void onCreate() {}
+
 	@Override
 	public void onResume()
 	{
-		takingAlready = false;
-		imagesTaken=0;
+		imagesTaken = 0;
 		inCapture = false;
-		refreshPreferences();
+		aboutToTakePicture = false;
+		
+		isAllImagesTaken = false;
+		isAllCaptureResultsCompleted = true;
+
+		if (CameraController.isUseCamera2() && CameraController.isNexus5or6)
+		{
+			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ApplicationScreen.getMainContext());
+			preferenceFlashMode = prefs.getInt(ApplicationScreen.sFlashModePref, ApplicationScreen.sDefaultFlashValue);
+			
+			SharedPreferences.Editor editor = prefs.edit();
+			editor.putInt(ApplicationScreen.sFlashModePref, CameraParameters.FLASH_MODE_OFF);
+			editor.commit();
+		}
+
+		ApplicationScreen.setCaptureFormat(CameraController.YUV);
 	}
-	
-	private void refreshPreferences()
+
+	@Override
+	public void setupCameraParameters()
 	{
 		try
 		{
-			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainScreen.mainContext);
-			imageAmount = Integer.parseInt(prefs.getString("BestshotImagesAmount", "5"));
-		}
-		catch (Exception e)
+			int[] flashModes = CameraController.getSupportedFlashModes();
+			if (flashModes != null && flashModes.length > 0 && CameraController.isUseCamera2()
+					&& CameraController.isNexus5or6)
+			{
+				CameraController.setCameraFlashMode(CameraParameters.FLASH_MODE_OFF);
+
+				SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ApplicationScreen.getMainContext());
+				SharedPreferences.Editor editor = prefs.edit();
+				editor.putInt(ApplicationScreen.sFlashModePref, CameraParameters.FLASH_MODE_OFF);
+				editor.commit();
+			}
+		} catch (RuntimeException e)
 		{
-			Log.v("Bestshot capture", "Cought exception " + e.getMessage());
+			Log.e("CameraTest", "ApplicationScreen.setupCamera unable to setFlashMode");
 		}
-		
-        switch (imageAmount)
-        {
-        case 3:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst3;
-        	break;
-        case 5:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst5;
-        	break;
-        case 10:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst10;
-        	break;
-        }       
-	}
-	
-	@Override
-	public void onQuickControlClick()
-	{        
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainScreen.mainContext);
-        int val = Integer.parseInt(prefs.getString("BestshotImagesAmount", "5"));
-        int selected = 0;
-        switch (val)
-        {
-        case 3:
-        	selected=0;
-        	break;
-        case 5:
-        	selected=1;
-        	break;
-        case 10:
-        	selected=2;
-        	break;
-        }
-        selected= (selected+1)%3;
-        
-    	Editor editor = prefs.edit();
-    	switch (selected)
-        {
-        case 0:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst3;
-        	editor.putString("BestshotImagesAmount", "3");
-        	break;
-        case 1:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst5;
-        	editor.putString("BestshotImagesAmount", "5");
-        	break;
-        case 2:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst10;
-        	editor.putString("BestshotImagesAmount", "10");
-        	break;
-        }
-    	editor.commit();
 	}
 
 	@Override
 	public void onGUICreate()
 	{
-		MainScreen.guiManager.showHelp("Best shot help", MainScreen.thiz.getResources().getString(R.string.Bestshot_Help), R.drawable.plugin_help_bestshot, "bestShotShowHelp");
+		ApplicationScreen.getGUIManager().showHelp(ApplicationScreen.instance.getString(R.string.Bestshot_Help_Header),
+				ApplicationScreen.getAppResources().getString(R.string.Bestshot_Help), R.drawable.plugin_help_bestshot,
+				"bestShotShowHelp");
+
+		if (CameraController.isUseCamera2() && CameraController.isNexus5or6)
+		{
+			ApplicationScreen.instance.disableCameraParameter(CameraParameter.CAMERA_PARAMETER_FLASH, true, false, true);
+		}
 	}
-	
-	public boolean delayedCaptureSupported(){return true;}
-	
-	@Override
-	public void OnShutterClick()
+
+	public boolean delayedCaptureSupported()
 	{
-		if (inCapture == false)
-        {
-			Date curDate = new Date();
-			SessionID = curDate.getTime();
-			
-			MainScreen.thiz.MuteShutter(true);
-			
-			String fm = MainScreen.thiz.getFocusMode();
-			if(takingAlready == false && (MainScreen.getFocusState() == MainScreen.FOCUS_STATE_IDLE ||
-					MainScreen.getFocusState() == MainScreen.FOCUS_STATE_FOCUSING)
-					&& fm != null
-					&& !(fm.equals(Parameters.FOCUS_MODE_INFINITY)
-	        				|| fm.equals(Parameters.FOCUS_MODE_FIXED)
-	        				|| fm.equals(Parameters.FOCUS_MODE_EDOF)
-	        				|| fm.equals(Parameters.FOCUS_MODE_CONTINUOUS_PICTURE)
-	        				|| fm.equals(Parameters.FOCUS_MODE_CONTINUOUS_VIDEO))
-	        				&& !MainScreen.getAutoFocusLock())
-				takingAlready = true;			
-			else if(takingAlready == false)
-			{
-				takePicture();
-			}
-        }
+		return true;
 	}
-	
-	
+
+	@Override
+	public void onPause()
+	{
+		if (CameraController.isUseCamera2() && CameraController.isNexus5or6) {
+			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ApplicationScreen.getMainContext());
+			prefs.edit().putInt(ApplicationScreen.sFlashModePref, preferenceFlashMode).commit();
+			CameraController.setCameraFlashMode(preferenceFlashMode);
+		}
+	}
+
 	public void takePicture()
 	{
-		refreshPreferences();
-		inCapture = true;
-		takingAlready = true;
-		new CountDownTimer(50, 50) {
-		     public void onTick(long millisUntilFinished) {}
-		     public void onFinish() 
-		     {
-				Message msg = new Message();
-				msg.arg1 = PluginManager.MSG_NEXT_FRAME;
-				msg.what = PluginManager.MSG_BROADCAST;
-				MainScreen.H.sendMessage(msg);					
-		     }
-		  }.start();
+		imagesTaken = 0;
+		resultCompleted = 0;
+		createRequestIDList(imageAmount);
+		CameraController.captureImagesWithParams(imageAmount, CameraController.YUV, null, null, null, null, false, true, true);
 	}
 
-
 	@Override
-	public void onPictureTaken(byte[] paramArrayOfByte, Camera paramCamera)
+	public void onImageTaken(int frame, byte[] frameData, int frame_len, int format)
 	{
 		imagesTaken++;
-		int frame_len = paramArrayOfByte.length;
-		int frame = SwapHeap.SwapToHeap(paramArrayOfByte);
-    	
-    	if (frame == 0)
-    	{
-    		Log.i("Bestshot", "Load to heap failed");
-    		Message message = new Message();
-    		message.obj = String.valueOf(SessionID);
-			message.what = PluginManager.MSG_CAPTURE_FINISHED;
-			MainScreen.H.sendMessage(message);
-			
-			imagesTaken=0;
-			MainScreen.thiz.MuteShutter(false);
-			inCapture = false;
-			return;
-    	}
-    	String frameName = "frame" + imagesTaken;
-    	String frameLengthName = "framelen" + imagesTaken;
-    	
-    	PluginManager.getInstance().addToSharedMem(frameName+String.valueOf(SessionID), String.valueOf(frame));
-    	PluginManager.getInstance().addToSharedMem(frameLengthName+String.valueOf(SessionID), String.valueOf(frame_len));
-    	PluginManager.getInstance().addToSharedMem("frameorientation" + imagesTaken + String.valueOf(SessionID), String.valueOf(MainScreen.guiManager.getDisplayOrientation()));
-    	PluginManager.getInstance().addToSharedMem("framemirrored" + imagesTaken + String.valueOf(SessionID), String.valueOf(MainScreen.getCameraMirrored()));
-    	
-    	if(imagesTaken == 1)
-    		PluginManager.getInstance().addToSharedMem_ExifTagsFromJPEG(paramArrayOfByte, SessionID);
-		
-		try
+
+		if (frame == 0)
 		{
-			paramCamera.startPreview();
-		}
-		catch (RuntimeException e)
-		{
-			Log.i("Bestshot", "StartPreview fail");
-			Message message = new Message();
-			message.obj = String.valueOf(SessionID);
-			message.what = PluginManager.MSG_CAPTURE_FINISHED;
-			MainScreen.H.sendMessage(message);
-			
-			imagesTaken=0;
-			MainScreen.thiz.MuteShutter(false);
-			inCapture = false;
+			Log.d("Bestshot", "Load to heap failed");
+			PluginManager.getInstance().sendMessage(ApplicationInterface.MSG_CAPTURE_FINISHED, String.valueOf(SessionID));
+
+			imagesTaken = 0;
+			ApplicationScreen.instance.muteShutter(false);
 			return;
 		}
-		if (imagesTaken < imageAmount)
-			MainScreen.H.sendEmptyMessage(PluginManager.MSG_TAKE_PICTURE);
-		else
+		String frameName = "frame" + imagesTaken;
+		String frameLengthName = "framelen" + imagesTaken;
+
+		PluginManager.getInstance().addToSharedMem(frameName + SessionID, String.valueOf(frame));
+		PluginManager.getInstance().addToSharedMem(frameLengthName + SessionID, String.valueOf(frame_len));
+		PluginManager.getInstance().addToSharedMem("frameorientation" + imagesTaken + SessionID,
+				String.valueOf(ApplicationScreen.getGUIManager().getImageDataOrientation()));
+		PluginManager.getInstance().addToSharedMem("framemirrored" + imagesTaken + SessionID,
+				String.valueOf(CameraController.isFrontCamera()));
+
+		if (imagesTaken >= imageAmount)
 		{
-			PluginManager.getInstance().addToSharedMem("amountofcapturedframes"+String.valueOf(SessionID), String.valueOf(imagesTaken));
-			
-			Message message = new Message();
-			message.obj = String.valueOf(SessionID);
-			message.what = PluginManager.MSG_CAPTURE_FINISHED;
-			MainScreen.H.sendMessage(message);
-			
-			imagesTaken=0;
-			inCapture = false;
-		}
-		takingAlready = false;
-	}
+			if(isAllCaptureResultsCompleted)
+			{
+				PluginManager.getInstance().addToSharedMem("amountofcapturedframes" + SessionID,
+						String.valueOf(imagesTaken));
 	
+				PluginManager.getInstance().sendMessage(ApplicationInterface.MSG_CAPTURE_FINISHED, String.valueOf(SessionID));
+	
+				imagesTaken = 0;
+				resultCompleted = 0;
+				inCapture = false;
+				
+				isAllImagesTaken = false;
+			}
+			else
+				isAllImagesTaken = true;
+		}
+	}
+
+	@TargetApi(21)
 	@Override
-	public void onAutoFocus(boolean paramBoolean, Camera paramCamera)
+	public void onCaptureCompleted(CaptureResult result)
 	{
-		if(takingAlready == true)
-			takePicture();
+		isAllCaptureResultsCompleted = false;
+		
+		resultCompleted++;
+		
+		if (resultCompleted == 1)
+			PluginManager.getInstance().addToSharedMemExifTagsFromCaptureResult(result, SessionID, -1);
+		
+		if (resultCompleted == imageAmount)
+		{
+			isAllCaptureResultsCompleted = true;
+			
+			if(isAllImagesTaken)
+			{
+				PluginManager.getInstance().addToSharedMem("amountofcapturedframes" + SessionID,
+						String.valueOf(imagesTaken));
+				PluginManager.getInstance().sendMessage(ApplicationInterface.MSG_CAPTURE_FINISHED, String.valueOf(SessionID));
+				
+				inCapture = false;
+				resultCompleted = 0;
+				imagesTaken = 0;
+				isAllImagesTaken = false;
+			}
+		}
 	}
 
 	@Override
-	public boolean onBroadcast(int arg1, int arg2)
+	public void onPreviewFrame(byte[] data)
 	{
-		if (arg1 == PluginManager.MSG_NEXT_FRAME)
-		{
-			Camera camera = MainScreen.thiz.getCamera();
-			if (camera != null)
-			{
-				// play tick sound
-				MainScreen.guiManager.showCaptureIndication();
-        		MainScreen.thiz.PlayShutter();
-        		
-        		try {
-        			camera.setPreviewCallback(null);
-        			camera.takePicture(null, null, null, MainScreen.thiz);
-				}catch (Exception e) {
-					e.printStackTrace();
-					Log.e("Bestshot takePicture() failed", "takePicture: " + e.getMessage());
-					inCapture = false;
-					takingAlready = false;
-					Message msg = new Message();
-	    			msg.arg1 = PluginManager.MSG_CONTROL_UNLOCKED;
-	    			msg.what = PluginManager.MSG_BROADCAST;
-	    			MainScreen.H.sendMessage(msg);	    			
-	    			MainScreen.guiManager.lockControls = false;
-				}
-			}
-			else
-			{
-				inCapture = false;
-				takingAlready = false;
-				Message msg = new Message();
-    			msg.arg1 = PluginManager.MSG_CONTROL_UNLOCKED;
-    			msg.what = PluginManager.MSG_BROADCAST;
-    			MainScreen.H.sendMessage(msg);
-    			
-    			MainScreen.guiManager.lockControls = false;
-			}			
-    		return true;
-		}
-		return false;
 	}
-	
-	@Override
-	public void onPreviewFrame(byte[] data, Camera paramCamera){}	
 }

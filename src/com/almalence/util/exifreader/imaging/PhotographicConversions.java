@@ -27,7 +27,7 @@ package com.almalence.util.exifreader.imaging;
  */
 public final class PhotographicConversions
 {
-    public final static double ROOT_TWO = Math.sqrt(2);
+    public static final double ROOT_TWO = Math.sqrt(2);
 
     private PhotographicConversions() throws Exception
     {
@@ -43,9 +43,6 @@ public final class PhotographicConversions
     public static double apertureToFStop(double aperture)
     {
         return Math.pow(ROOT_TWO, aperture);
-
-        // NOTE jhead uses a different calculation as far as i can tell...  this confuses me...
-        // fStop = (float)Math.exp(aperture * Math.log(2) * 0.5));
     }
 
     /**

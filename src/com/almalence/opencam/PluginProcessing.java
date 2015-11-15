@@ -14,33 +14,32 @@ The Original Code is collection of files collectively known as Open Camera.
 The Initial Developer of the Original Code is Almalence Inc.
 Portions created by Initial Developer are Copyright (C) 2013 
 by Almalence Inc. All Rights Reserved.
-*/
+ */
 
 /* <!-- +++
-package com.almalence.opencam_plus;
-+++ --> */
+ package com.almalence.opencam_plus;
+ +++ --> */
 // <!-- -+-
 package com.almalence.opencam;
 //-+- -->
 
-
 public abstract class PluginProcessing extends Plugin
 {
-	public PluginProcessing(String ID,
-							int preferenceID,
-							int advancedPreferenceID,
-							int quickControlID,
-							String quickControlInitTitle)
-	{
-		super(ID, preferenceID, advancedPreferenceID, quickControlID, quickControlInitTitle);		
-	}
+	protected String mode = null;
 	
-	@Override
-	abstract public void onStartProcessing(long SessionID);
+	public PluginProcessing(String ID, String mode, int preferenceID, int advancedPreferenceID, int quickControlID,
+			String quickControlInitTitle)
+	{
+		super(ID, preferenceID, advancedPreferenceID, quickControlID, quickControlInitTitle);
+		this.mode = mode;
+	}
 
 	@Override
-	abstract public boolean isPostProcessingNeeded();
-	
+	public abstract void onStartProcessing(long SessionID);
+
 	@Override
-	abstract public void onStartPostProcessing();
+	public abstract boolean isPostProcessingNeeded();
+
+	@Override
+	public abstract void onStartPostProcessing();
 }

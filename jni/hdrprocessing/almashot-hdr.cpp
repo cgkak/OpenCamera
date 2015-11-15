@@ -19,6 +19,10 @@ by Almalence Inc. All Rights Reserved.
 #include <stdio.h>
 #include <string.h>
 #include <jni.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <stdint.h>
+
 #include <android/log.h>
 
 #include "ImageConversionUtils.h"
@@ -39,6 +43,16 @@ static Uint8 *OutPic = NULL;
 void __attribute__((constructor)) initialize_openmp() {}
 void __attribute__((destructor)) release_openmp() {}
 
+extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_hdr_AlmaShotHDR_getAffinity
+(
+	JNIEnv* env,
+	jobject thiz
+)
+{
+	uint32_t mask[2];
+	syscall(__NR_sched_getaffinity, gettid(), sizeof(mask), mask);
+	//__android_log_print(ANDROID_LOG_FATAL, "AlmaShot", "Affinity mask: 0x%x", mask[0]);
+}
 
 extern "C" JNIEXPORT jstring JNICALL Java_com_almalence_plugins_processing_hdr_AlmaShotHDR_Initialize
 (
@@ -81,7 +95,7 @@ extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_hdr_Alma
 }
 
 
-// ToDo: this is a very common operation - use ImageConversion jni interface instead (? - need to avoid global yuv array then?)
+// this is a very common operation - use ImageConversion jni interface instead (? - need to avoid global yuv array then?)
 extern "C" JNIEXPORT jstring JNICALL Java_com_almalence_plugins_processing_hdr_AlmaShotHDR_HDRConvertFromJpeg
 (
 	JNIEnv* env,
@@ -105,10 +119,71 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_almalence_plugins_processing_hdr_A
 	jpeg = (unsigned char**)env->GetIntArrayElements(in, NULL);
 	jpeg_length = (int*)env->GetIntArrayElements(in_len, NULL);
 
-	DecodeAndRotateMultipleJpegs(yuv, jpeg, jpeg_length, sx, sy, nFrames, 0, 0, 0);
+	DecodeAndRotateMultipleJpegs(yuv, jpeg, jpeg_length, sx, sy, nFrames, 0, 0, 0, true);
 
 	env->ReleaseIntArrayElements(in, (jint*)jpeg, JNI_ABORT);
 	env->ReleaseIntArrayElements(in_len, (jint*)jpeg_length, JNI_ABORT);
+
+	//sprintf (status, "frames total: %d\nsize0: %d\nsize1: %d\nsize2: %d\n", (int)nFrames, jpeg_length[0], jpeg_length[1], jpeg_length[2]);
+	sprintf (status, "frames total: %d\n", (int)nFrames);
+	return env->NewStringUTF(status);
+}
+
+
+extern "C" JNIEXPORT jstring JNICALL Java_com_almalence_plugins_processing_hdr_AlmaShotHDR_HDRAddYUVFrames
+(
+	JNIEnv* env,
+	jobject thiz,
+	jintArray in,
+	jint nFrames,
+	jint sx,
+	jint sy
+)
+{
+	int i;
+	unsigned char * *yuvIn;
+	char status[1024];
+
+//	Uint8 *inp[4];
+//	int x, y;
+//	int x0_out, y0_out, w_out, h_out;
+
+	yuvIn = (unsigned char**)env->GetIntArrayElements(in, NULL);
+
+//	__android_log_print(ANDROID_LOG_ERROR, "CameraTest", "START INPUT SAVE");
+//	for (int i=0; i<nFrames; ++i)
+//	{
+//		char str[256];
+//		sprintf(str, "/sdcard/DCIM/hdrin%02d.yuv", i);
+//		FILE *f = fopen (str, "wb");
+//		fwrite(yuvIn[i], sx*sy+2*((sx+1)/2)*((sy+1)/2), 1, f);
+//		fclose(f);
+//	}
+//	__android_log_print(ANDROID_LOG_ERROR, "CameraTest", "INPUT SAVCED");
+
+	// pre-allocate uncompressed yuv buffers
+//	for (i=0; i<nFrames; ++i)
+//	{
+//		yuv[i] = (unsigned char*)malloc(sx*sy+2*((sx+1)/2)*((sy+1)/2));
+//
+//		if (yuv[i]==NULL)
+//		{
+//			i--;
+//			for (;i>=0;--i)
+//			{
+//				free(yuv[i]);
+//				yuv[i] = NULL;
+//			}
+//			break;
+//		}
+//
+//		yuv[i] = yuvIn[i];
+//	}
+
+	for (i=0; i<nFrames; ++i)
+			yuv[i] = yuvIn[i];
+
+	env->ReleaseIntArrayElements(in, (jint*)yuvIn, JNI_ABORT);
 
 	//sprintf (status, "frames total: %d\nsize0: %d\nsize1: %d\nsize2: %d\n", (int)nFrames, jpeg_length[0], jpeg_length[1], jpeg_length[2]);
 	sprintf (status, "frames total: %d\n", (int)nFrames);
@@ -139,34 +214,56 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_almalence_plugins_processing_hdr_A
 	Uint32 *pview;
 	int nTable[3] = {1,3,7};
 
-	//__android_log_print(ANDROID_LOG_INFO, "CameraTest", "Preview CALLED %d %d", sx, sy);
+//	__android_log_print(ANDROID_LOG_ERROR, "CameraTest", "Preview CALLED %d %d", sx, sy);
 
 	pview = (Uint32 *)env->GetIntArrayElements(jpview, NULL);
 
-	/* debug
-	for (i=0; i<nFrames; ++i)
-	{
-		char s[1024];
+/*Debug logs
+	FILE * pFile;
+	pFile = fopen ("/sdcard/DCIM/hdrparams.txt","wb");
+	fprintf (pFile, "Hdr_Preview params:\nExpo pref %d\nColor pref %d\nContrast pref %d\nMicro contrast pref %d\nSX %d\nSY %d\nnFrames %d\nnoSegmPref %d",expoPref,colorPref,ctrstPref,microPref,sx,sy,nFrames,noSegmPref);
+	fclose (pFile);
 
-		sprintf(s, "/mnt/sdcard/HdrCameraInput/%d.bin", i);
-		FILE *f=fopen(s, "wb");
-		fwrite (yuv[i], sx*sy*2, 1, f);
+	for (int i=0; i<nFrames; ++i)
+	{
+		char str[256];
+		sprintf(str, "/sdcard/DCIM/hdrin%02d.yuv", i);
+		FILE *f = fopen (str, "wb");
+		fwrite(yuv[i], sx*sy+2*((sx+1)/2)*((sy+1)/2), 1, f);
 		fclose(f);
 	}
-	*/
+ */
 
 	pview_rgb = (Uint8*)malloc((sx/4)*(sy/4)*3);
 
 	if (pview_rgb)
 	{
 		if (noisePref<0)	// eval version
+		{
+//			__android_log_print(ANDROID_LOG_ERROR, "CameraTest", "Hdr_Preview eval version called");
 			Hdr_Preview(&instance, yuv, pview_rgb, NULL, NULL, 256,
 				expoPref, colorPref, ctrstPref, microPref, sx, sy, nFrames, 1, noSegmPref, 0, 0, 1, 0);
+		}
 		else
+		{
+//			__android_log_print(ANDROID_LOG_ERROR, "CameraTest", "Hdr_Preview called");
 			Hdr_Preview(&instance, yuv, pview_rgb, NULL, NULL, 256*nTable[noisePref],
 				expoPref, colorPref, ctrstPref, microPref, sx, sy, nFrames, 1, noSegmPref, 1, 1, 1, 0);
+		}
 
+//		__android_log_print(ANDROID_LOG_ERROR, "CameraTest", "Hdr_Preview success");
+
+//		char s[1024];
+//
+//		sprintf(s, "/sdcard/DCIM/preview.bin");
+//		FILE *f=fopen(s, "wb");
+//		fwrite (pview_rgb, (sx/4)*(sy/4)*3, 1, f);
+//		fclose(f);
+//		__android_log_print(ANDROID_LOG_ERROR, "CameraTest", "PREVIEW SAVCED");
+
+//		__android_log_print(ANDROID_LOG_ERROR, "CameraTest", "AlmaShot_Preview2RGBi start");
 		AlmaShot_Preview2RGBi(pview_rgb, pview_rgb, sx/4, sy/4, 0, 0, sx/4, sy/4, (sx/4)*3);
+//		__android_log_print(ANDROID_LOG_ERROR, "CameraTest", "AlmaShot_Preview2RGBi success");
 
 		// construct preview in a form suitable for android bitmap
 		for (y=0; y<sy/4; ++y)
@@ -360,7 +457,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_almalence_plugins_processing_hd
 	jint sx,
 	jint sy,
 	jintArray jcrop,
-	jboolean jrot,
+	jint orientation,
 	jboolean mirror
 )
 {
@@ -392,13 +489,20 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_almalence_plugins_processing_hd
 	Hdr_Process(instance, &OutPic, &crop[0], &crop[1], &crop[2], &crop[3], 1);
 	//__android_log_print(ANDROID_LOG_INFO, "CameraTest", "Hdr_Process() call returned");
 
+	int flipLeftRight, flipUpDown;
+	int rotate90 = orientation == 90 || orientation == 270;
+	if (mirror)
+		flipUpDown = flipLeftRight = orientation == 180 || orientation == 90;
+	else
+		flipUpDown = flipLeftRight = orientation == 180 || orientation == 270;
+
 	OutNV21 = OutPic;
-	if (jrot)
+	if (rotate90)
 		OutNV21 = (Uint8 *)malloc(allocSize);
 
-	TransformNV21(OutPic, OutNV21, sx, sy, crop, mirror&&jrot, mirror&&jrot, jrot);
+	TransformNV21(OutPic, OutNV21, sx, sy, crop, flipLeftRight, flipUpDown, rotate90);
 
-	if (jrot)
+	if (rotate90)
 	{
 		free(OutPic);
 		OutPic = OutNV21;
@@ -408,8 +512,15 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_com_almalence_plugins_processing_hd
 	data = (unsigned char*)env->GetByteArrayElements(jdata, NULL);
 	memcpy (data, OutPic, allocSize);
 
+//	char s[1024];
+//
+//	sprintf(s, "/sdcard/DCIM/result.bin");
+//	FILE *f=fopen(s, "wb");
+//	fwrite (data, allocSize, 1, f);
+//	fclose(f);
+
 	env->ReleaseIntArrayElements(jcrop, (jint*)crop, JNI_ABORT);
-	env->ReleaseByteArrayElements(jdata, (jbyte*)data, JNI_ABORT);
+	env->ReleaseByteArrayElements(jdata, (jbyte*)data, 0);
 
 	return jdata;
 }

@@ -23,6 +23,9 @@ by Almalence Inc. All Rights Reserved.
 
 #include <setjmp.h>
 #include "jpeglib.h"
+#include <math.h>
+
+#include <jni.h>
 
 #include "ImageConversionUtils.h"
 
@@ -166,7 +169,7 @@ int JPEG2NV21(Uint8 *yuv, Uint8 *jpegdata, int jpeglen, int sx, int sy, bool nee
 		if(rotationDegree == 90 || rotationDegree == 270)
 			nRotate = 1; //used to support 4-side rotation
 
-		// ToDo: not sure if it should be 'cameraMirrored, 0,' or '0, cameraMirrored,'
+		// not sure if it should be 'cameraMirrored, 0,' or '0, cameraMirrored,'
 		TransformNV21(dst, yuv, sx, sy, NULL, cameraMirrored, flipUD, nRotate);
 		free(dst);
 	}
@@ -246,7 +249,8 @@ int DecodeAndRotateMultipleJpegs
 	int nFrames,
 	int needRotation,
 	int cameraMirrored,
-	int rotationDegree
+	int rotationDegree,
+	bool needFreeMem//true by default
 )
 {
 	int i;
@@ -284,76 +288,14 @@ int DecodeAndRotateMultipleJpegs
 		}
 
 		// release compressed memory
-		free (jpeg[i]);
+		if (needFreeMem)
+			free (jpeg[i]);
 	}
 
 	LOGD("ConvertFromJpeg - end");
 
 	return isFoundinInput;
 }
-
-
-// returns:
-// -1 - not enough memory
-// 0<X<nFrames - X = frame index where error is happened during decoding
-// 255 - all ok
-int DecodeAndRotateMultipleJpegsNoRelease
-(
-	unsigned char **yuvFrame,
-	unsigned char **jpeg,
-	int *jpeg_length,
-	int sx,
-	int sy,
-	int nFrames,
-	int needRotation,
-	int cameraMirrored,
-	int rotationDegree
-)
-{
-	int i;
-	int isFoundinInput = 255; // if error is found during decoding - the frame index will be here
-
-	LOGD("ConvertFromJpeg - start");
-
-	// pre-allocate uncompressed yuv buffers
-	for (i=0; i<nFrames; ++i)
-	{
-		yuvFrame[i] = (unsigned char*)malloc(sx*sy+2*((sx+1)/2)*((sy+1)/2));
-
-		if (yuvFrame[i]==NULL)
-		{
-			LOGE("ConvertFromJpeg - not enough memory");
-
-			i--;
-			for (;i>=0;--i)
-			{
-				free(yuvFrame[i]);
-				yuvFrame[i] = NULL;
-			}
-			return -1;
-		}
-	}
-
-	#pragma omp parallel for num_threads(10)
-	for (i=0; i<nFrames; ++i)
-	{
-		// decode from jpeg
-		if(JPEG2NV21(yuvFrame[i], jpeg[i], jpeg_length[i], sx, sy, needRotation, cameraMirrored, rotationDegree) == 0)
-		{
-			isFoundinInput = i;
-			LOGE("Error Found in %d - jpeg frame\n", (int)i);
-		}
-
-		// release compressed memory
-		//no release changes
-		//free (jpeg[i]);
-	}
-
-	LOGD("ConvertFromJpeg - end");
-
-	return isFoundinInput;
-}
-
 
 void TransformPlane8bit
 (
@@ -366,9 +308,8 @@ void TransformPlane8bit
 	int rotate90
 )
 {
-	int x,y, ox, oy;
+	int y;
 	int osx, osy;
-	unsigned char t1, t2, t3, t4;
 
 	// no transform case
 	if ((!flipLeftRight) && (!flipUpDown) && (!rotate90))
@@ -387,7 +328,13 @@ void TransformPlane8bit
 
 	// processing 4 mirrored locations at once
 	// +1 here to cover case when image dimensions are odd
+	#pragma omp parallel for schedule(guided)
 	for (y=0; y<(sy+1)/2; ++y)
+	{
+		int x;
+		int ox, oy;
+		unsigned char t1, t2, t3, t4;
+
 		for (x=0; x<(sx+1)/2; ++x)
 		{
 			if (rotate90)
@@ -425,6 +372,7 @@ void TransformPlane8bit
 				Out[osx-1-ox + (osy-1-oy)*osx] = t4;
 			}
 		}
+	}
 }
 
 
@@ -439,9 +387,8 @@ void TransformPlane16bit
 	int rotate90
 )
 {
-	int x,y, ox, oy;
+	int y;
 	int osx, osy;
-	unsigned short t1, t2, t3, t4;
 
 	// no transform case
 	if ((!flipLeftRight) && (!flipUpDown) && (!rotate90))
@@ -459,7 +406,13 @@ void TransformPlane16bit
 		else {osx = sx; osy = sy;}
 
 	// processing 4 mirrored locations at once
+	#pragma omp parallel for schedule(guided)
 	for (y=0; y<(sy+1)/2; ++y)
+	{
+		int x;
+		int ox, oy;
+		unsigned short t1, t2, t3, t4;
+
 		for (x=0; x<(sx+1)/2; ++x)
 		{
 			if (rotate90)
@@ -497,7 +450,9 @@ void TransformPlane16bit
 				Out[osx-1-ox + (osy-1-oy)*osx] = t4;
 			}
 		}
+	}
 }
+
 
 void TransformPlane32bit
 (
@@ -510,9 +465,8 @@ void TransformPlane32bit
 	int rotate90
 )
 {
-	int x,y, ox, oy;
+	int y;
 	int osx, osy;
-	unsigned int t1, t2, t3, t4;
 
 	// no transform case
 	if ((!flipLeftRight) && (!flipUpDown) && (!rotate90))
@@ -530,7 +484,13 @@ void TransformPlane32bit
 		else {osx = sx; osy = sy;}
 
 	// processing 4 mirrored locations at once
+	#pragma omp parallel for schedule(guided)
 	for (y=0; y<(sy+1)/2; ++y)
+	{
+		int x;
+		int ox, oy;
+		unsigned int t1, t2, t3, t4;
+
 		for (x=0; x<(sx+1)/2; ++x)
 		{
 			if (rotate90)
@@ -568,6 +528,7 @@ void TransformPlane32bit
 				Out[osx-1-ox + (osy-1-oy)*osx] = t4;
 			}
 		}
+	}
 }
 
 
@@ -702,6 +663,10 @@ void NV21_to_RGB_scaled_rotated
 		bgr = 0;
 		stride -= 2;
 	}
+	else if (stride == 4)
+	{
+		bgr = 0;
+	}
 
 	const int tripleHeight = (outHeight - 1) * stride;
 	int yoffset = tripleHeight;
@@ -828,4 +793,162 @@ void NV21_to_Gray_scaled
     }
 }
 
+void addRoundCornersRGBA8888
+(
+	unsigned char * const rgb_bytes,
+	const int outWidth,
+	const int outHeight
+)
+{
+	// make nice corners and edges,
+	// apply softbox-like effect
+	int edge = (outWidth < outHeight ? outWidth:outHeight)/60;
+	int corner = (outWidth < outHeight ? outWidth:outHeight)/60;
+	for (int j = 0; j < outWidth; j++)
+	{
+		int thr = 2*(outHeight/3) - (outHeight/3) * (j+outWidth-(outWidth-j)*(outWidth-j)/outWidth) / (outWidth*2);
 
+		for (int i = 0; i < outHeight; i++)
+		{
+			if ((j>corner) && (j<outWidth-1-corner) && (i>edge+1) && (i<outHeight-1-edge))
+				continue;
+			if ((j>edge+1) && (j<outWidth-2-edge) && (i>corner) && (i<outHeight-1-corner))
+				continue;
+
+			int offset = (j+i*outWidth)*4;
+
+			// soft-box-like effect
+			int eclr  = 228 + ( i>thr ? (outHeight-i)*(200-228)/(outHeight-thr) : i*(255-228)/thr );
+			int sbclr = 128 + ( i>thr ? (outHeight-i)*(0-128)/(outHeight-thr) : i*(255-128)/thr );
+
+			float r = 0;
+			float e = 0;
+			int ecorner = 0;
+
+			if ((i<corner) && (j<corner))
+				r = (float)(corner-j)*(corner-j)+(float)(corner-i)*(corner-i);
+			if ((i<corner) && (j>outWidth-1-corner))
+				r = (float)(outWidth-1-corner-j)*(outWidth-1-corner-j)+(float)(corner-i)*(corner-i);
+			if ((i>outHeight-1-corner) && (j>outWidth-1-corner))
+				r = (float)(outWidth-1-corner-j)*(outWidth-1-corner-j)+(float)(outHeight-1-corner-i)*(outHeight-1-corner-i);
+			if ((i>outHeight-1-corner) && (j<corner))
+				r = (float)(corner-j)*(corner-j)+(float)(outHeight-1-corner-i)*(outHeight-1-corner-i);
+
+			if (r>(corner-edge)*(corner-edge))
+			{
+				if (r<corner*corner)
+				{
+					e = edge-(corner-sqrtf(r));
+					ecorner = 1;
+				}
+				else
+				{
+					rgb_bytes[offset+0] = 0;
+					rgb_bytes[offset+1] = 0;
+					rgb_bytes[offset+2] = 0;
+					rgb_bytes[offset+3] = 0;
+					continue;
+				}
+			}
+			else if (i<edge)
+				e = edge-i;
+			else if (j<edge)
+				e = edge-j;
+			else if (j>outWidth-1-edge)
+				e = j-outWidth+1+edge;
+			else if (i>outHeight-1-edge)
+				e = i-outHeight+1+edge;
+
+			if (e>0)	// edges
+			{
+				if ((e<=1) && (r>0))	// anti-aliasing inner corners
+				{
+					rgb_bytes[offset+0] = ((int)rgb_bytes[offset+0]+eclr)/2;
+					rgb_bytes[offset+1] = ((int)rgb_bytes[offset+1]+eclr)/2;
+					rgb_bytes[offset+2] = ((int)rgb_bytes[offset+2]+eclr)/2;
+				}
+				else if (e>edge-2)	// anti-aliasing outer edge of a frame
+				{
+					int clr;
+
+					if (ecorner)
+						clr = max(0, 255-(int)((e-(edge-2))*255));
+					else
+						clr = 0;
+					rgb_bytes[offset+0] = (eclr*clr)>>8;
+					rgb_bytes[offset+1] = (eclr*clr)>>8;
+					rgb_bytes[offset+2] = (eclr*clr)>>8;
+					rgb_bytes[offset+3] = clr;
+				}
+				else
+				{
+					rgb_bytes[offset+0] = eclr;
+					rgb_bytes[offset+1] = eclr;
+					rgb_bytes[offset+2] = eclr;
+					rgb_bytes[offset+3] = 255;
+				}
+
+				continue;
+			}
+
+			// inner part of the image - soft-box effect
+			rgb_bytes[offset+0] = ((int)rgb_bytes[offset+0]*7+sbclr)/8;
+			rgb_bytes[offset+1] = ((int)rgb_bytes[offset+1]*7+sbclr)/8;
+			rgb_bytes[offset+2] = ((int)rgb_bytes[offset+2]*7+sbclr)/8;
+		}
+	}
+}
+
+extern "C" JNIEXPORT jintArray JNICALL Java_com_almalence_util_ImageConversion_NV21toARGB
+(
+	JNIEnv* env,
+	jobject thiz,
+	jint inptr,
+	jobject srcSize,
+	jobject rect,
+	jobject dstSize
+)
+{
+	LOGD("NV21toARGB - start");
+
+	Uint32 * pixels;
+	jintArray jpixels = NULL;
+
+	jclass src_size = env->GetObjectClass(srcSize);
+	jfieldID id_srcW = env->GetFieldID(src_size, "width", "I");
+	jint srcW = env->GetIntField(srcSize,id_srcW);
+	jfieldID id_srcH = env->GetFieldID(src_size, "height", "I");
+	jint srcH = env->GetIntField(srcSize,id_srcH);
+
+	jclass class_rect = env->GetObjectClass(rect);
+	jfieldID id_left = env->GetFieldID(class_rect, "left", "I");
+	jint left = env->GetIntField(rect,id_left);
+	jfieldID id_top = env->GetFieldID(class_rect, "top", "I");
+	jint top = env->GetIntField(rect,id_top);
+	jfieldID id_right = env->GetFieldID(class_rect, "right", "I");
+	jint right = env->GetIntField(rect,id_right);
+	jfieldID id_bottom = env->GetFieldID(class_rect, "bottom", "I");
+	jint bottom = env->GetIntField(rect,id_bottom);
+
+	jclass dst_size = env->GetObjectClass(dstSize);
+	jfieldID id_dstW = env->GetFieldID(dst_size, "width", "I");
+	jint dstW = env->GetIntField(dstSize,id_dstW);
+	jfieldID id_dstH = env->GetFieldID(dst_size, "height", "I");
+	jint dstH = env->GetIntField(dstSize,id_dstH);
+
+	LOGD("inptr = %d srcW = %d srcH = %d ", inptr, srcW, srcH);
+	LOGD("left = %d top = %d right = %d bottom = %d ", left, top, right, bottom);
+	LOGD("dstW = %d dstH = %d", dstW, dstH);
+
+	jpixels = env->NewIntArray(dstW*dstH);
+	LOGD("Memory alloc size = %d * %d", dstW, dstH);
+	pixels = (Uint32 *)env->GetIntArrayElements(jpixels, NULL);
+
+	NV21_to_RGB_scaled((Uint8 *)inptr, srcW, srcH, left, top, right - left, bottom - top, dstW, dstH, 4, (Uint8 *)pixels);
+
+	env->ReleaseIntArrayElements(jpixels, (jint*)pixels, 0);
+
+	LOGD("NV21toARGB - end");
+
+	return jpixels;
+}

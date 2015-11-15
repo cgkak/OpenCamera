@@ -19,6 +19,14 @@ by Almalence Inc. All Rights Reserved.
 #ifndef __IMAGECONVERSION_UTILS_H__
 #define __IMAGECONVERSION_UTILS_H__
 
+inline int min(int a, int b)
+{
+	return (a > b ? b : a);
+}
+inline int max(int a, int b)
+{
+	return (a > b ? a : b);
+}
 
 enum {
 	PIXELS_BGRA,
@@ -55,20 +63,8 @@ int DecodeAndRotateMultipleJpegs
 	int nFrames,
 	int needRotation,
 	int cameraMirrored,
-	int rotationDegree
-);
-
-int DecodeAndRotateMultipleJpegsNoRelease
-(
-	unsigned char **yuvFrame,
-	unsigned char **jpeg,
-	int *jpeg_length,
-	int sx,
-	int sy,
-	int nFrames,
-	int needRotation,
-	int cameraMirrored,
-	int rotationDegree
+	int rotationDegree,
+	bool needFreeMem//true by default
 );
 
 void TransformPlane32bit
@@ -160,6 +156,13 @@ void NV21_to_Gray_scaled
 	int outWidth,
 	int outHeight,
 	unsigned char *buffer
+);
+
+void addRoundCornersRGBA8888
+(
+	unsigned char * const rgb_bytes,
+	const int outWidth,
+	const int outHeight
 );
 
 #endif // __IMAGECONVERSION_UTILS_H__

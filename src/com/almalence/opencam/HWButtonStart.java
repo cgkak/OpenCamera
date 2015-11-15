@@ -14,15 +14,14 @@ The Original Code is collection of files collectively known as Open Camera.
 The Initial Developer of the Original Code is Almalence Inc.
 Portions created by Initial Developer are Copyright (C) 2013 
 by Almalence Inc. All Rights Reserved.
-*/
+ */
 
 /* <!-- +++
-package com.almalence.opencam_plus;
-+++ --> */
+ package com.almalence.opencam_plus;
+ +++ --> */
 // <!-- -+-
 package com.almalence.opencam;
 //-+- -->
-
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -30,33 +29,28 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
 
-public class HWButtonStart extends BroadcastReceiver {
-    @Override
-    public void onReceive(Context context, Intent intent) 
-    {
-    	
-		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainScreen.mainContext);
-        boolean useHWShutterButtonLauncher = prefs.getBoolean("useHWShutterButtonLauncher", false);
-    	
-        if (!useHWShutterButtonLauncher)
-        	return;
-        
-    	abortBroadcast();
+public class HWButtonStart extends BroadcastReceiver
+{
+	@Override
+	public void onReceive(Context context, Intent intent)
+	{
+		try
+		{
+			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ApplicationScreen.getMainContext());
+			boolean useHWShutterButtonLauncher = prefs.getBoolean("useHWShutterButtonLauncher", false);
 
-    	Intent startActivity = new Intent();
-        startActivity.setClass(context, MainScreen.class);
-        startActivity.setAction(MainScreen.class.getName());
-        startActivity.setFlags(
-        Intent.FLAG_ACTIVITY_NEW_TASK
-        | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
-        context.startActivity(startActivity);
-        /*
-        Intent i = new Intent(Intent.ACTION_MAIN);
-        i.setClass(context, MainScreen.class);
-        i.addCategory(Intent.CATEGORY_LAUNCHER);
-        i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        context.startActivity(i);*/
-    }
+			if (!useHWShutterButtonLauncher)
+				return;
+
+			abortBroadcast();
+
+			Intent startActivity = new Intent();
+			startActivity.setClass(context, ApplicationScreen.class);
+			startActivity.setAction(ApplicationScreen.class.getName());
+			startActivity.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+			context.startActivity(startActivity);
+		} catch (Exception e)
+		{
+		}
+	}
 }
-	

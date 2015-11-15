@@ -16,9 +16,15 @@
 
 package com.almalence.plugins.vf.focus;
 
-public interface FocusIndicator {
-    public void showStart();
-    public void showSuccess();
-    public void showFail();
-    public void clear();
+public interface FocusIndicator
+{
+	public void showStart();
+
+	public void showSuccess();
+
+	public void showFail();
+
+	public void clear();
+	
+	public boolean isVisible();
 }

@@ -153,7 +153,7 @@ extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_groupsho
 	jpeg = (unsigned char**)env->GetIntArrayElements(in, NULL);
 	jpeg_length = (int*)env->GetIntArrayElements(in_len, NULL);
 
-	isFoundinInput = DecodeAndRotateMultipleJpegs(inputFrame, jpeg, jpeg_length, sx, sy, nFrames, needRotation, cameraMirrored, rotationDegree);
+	isFoundinInput = DecodeAndRotateMultipleJpegs(inputFrame, jpeg, jpeg_length, sx, sy, nFrames, needRotation, cameraMirrored, rotationDegree, true);
 
 	// prepare down-scaled gray frames for face detection analisys and detect faces
 	#pragma omp parallel for
@@ -185,6 +185,116 @@ extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_groupsho
 
 	env->ReleaseIntArrayElements(in, (jint*)jpeg, JNI_ABORT);
 	env->ReleaseIntArrayElements(in_len, (jint*)jpeg_length, JNI_ABORT);
+
+	LOGD("frames total: %d\n", (int)nFrames);
+	return isFoundinInput;
+}
+
+
+extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_groupshot_AlmaShotSeamless_DetectFacesFromYUVs
+(
+	JNIEnv* env,
+	jobject thiz,
+	jintArray in,
+	jintArray in_len,
+	jint nFrames,
+	jint sx,
+	jint sy,
+	jint fd_sx,
+	jint fd_sy,
+	jboolean needRotation,
+	jboolean cameraMirrored,
+	jint rotationDegree
+)
+{
+	int i;
+	int *yuv_length;
+	unsigned char * *yuv;
+	char status[1024];
+	int isFoundinInput = 255;
+
+	int x, y;
+	int x0_out, y0_out, w_out, h_out;
+
+	yuv = (unsigned char**)env->GetIntArrayElements(in, NULL);
+	yuv_length = (int*)env->GetIntArrayElements(in_len, NULL);
+
+	// pre-allocate uncompressed yuv buffers
+	for (i=0; i<nFrames; ++i)
+	{
+		inputFrame[i] = (unsigned char*)malloc(sx*sy+2*((sx+1)/2)*((sy+1)/2));
+
+		if (inputFrame[i]==NULL)
+		{
+			isFoundinInput = i;
+			i--;
+			for (;i>=0;--i)
+			{
+				free(inputFrame[i]);
+				inputFrame[i] = NULL;
+			}
+			break;
+		}
+
+		memcpy(inputFrame[i], yuv[i], yuv_length[i]);
+	}
+	//isFoundinInput = DecodeAndRotateMultipleJpegs(inputFrame, jpeg, jpeg_length, sx, sy, nFrames, 0, 0, 0);
+
+
+
+
+	// prepare down-scaled gray frames for face detection analisys and detect faces
+	#pragma omp parallel for
+	for (i=0; i<nFrames; ++i)
+	{
+
+		bool mirrored = cameraMirrored;
+//
+		if (needRotation || mirrored)
+			{
+				int nRotate = 0;
+				int flipUD = 0;
+				if(rotationDegree == 180 || rotationDegree == 270)
+				{
+					mirrored = !mirrored; //used to support 4-side rotation
+					flipUD = 1; //used to support 4-side rotation
+				}
+				if(rotationDegree == 90 || rotationDegree == 270)
+					nRotate = 1; //used to support 4-side rotation
+
+				// not sure if it should be 'cameraMirrored, 0,' or '0, cameraMirrored,'
+				TransformNV21(yuv[i], inputFrame[i], sx, sy, NULL, mirrored, flipUD, nRotate);
+//				free(dst);
+			}
+
+
+
+		unsigned char * grayFrame = (unsigned char *)malloc(fd_sx*fd_sy);
+		if (grayFrame == NULL)
+			isFoundinInput = i;
+		else
+		{
+			void *inst;
+
+			if(rotationDegree == 0 || rotationDegree == 180)
+				NV21_to_Gray_scaled(inputFrame[i], sx, sy, 0, 0, sx, sy, fd_sx, fd_sy, grayFrame);
+			else
+				NV21_to_Gray_scaled(inputFrame[i], sy, sx, 0, 0, sy, sx, fd_sx, fd_sy, grayFrame);
+
+			FaceDetector_initialize(&inst, fd_sx, fd_sy, MAX_FACE_DETECTED);
+			fd_nFaces[i] = FaceDetector_detect(inst, grayFrame);
+			if (fd_nFaces[i] > MAX_FACE_DETECTED)
+				fd_nFaces[i] = MAX_FACE_DETECTED;
+			for (int f=0; f<fd_nFaces[i]; ++f)
+				FaceDetector_get_face(inst, &fd_confid[i][f], &fd_midx[i][f], &fd_midy[i][f], &fd_eyedist[i][f]);
+			FaceDetector_destroy(inst);
+
+			free(grayFrame);
+		}
+	}
+
+	env->ReleaseIntArrayElements(in, (jint*)yuv, JNI_ABORT);
+	env->ReleaseIntArrayElements(in_len, (jint*)yuv_length, JNI_ABORT);
 
 	LOGD("frames total: %d\n", (int)nFrames);
 	return isFoundinInput;
@@ -282,7 +392,7 @@ extern "C" JNIEXPORT jintArray JNICALL Java_com_almalence_plugins_processing_gro
 
 	NV21_to_RGB_scaled((Uint8 *)inptr, srcW, srcH, left, top, right - left, bottom - top, dstW, dstH, 4, (Uint8 *)pixels);
 
-	env->ReleaseIntArrayElements(jpixels, (jint*)pixels, JNI_ABORT);
+	env->ReleaseIntArrayElements(jpixels, (jint*)pixels, 0);
 
 	LOGD("NV21toARGB - end");
 
@@ -322,7 +432,7 @@ extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_groupsho
 	return ret;
 }
 
-extern "C" JNIEXPORT jbyte* JNICALL Java_com_almalence_plugins_processing_groupshot_AlmaShotSeamless_Preview
+extern "C" JNIEXPORT jintArray JNICALL Java_com_almalence_plugins_processing_groupshot_AlmaShotSeamless_Preview
 (
 	JNIEnv* env,
 	jobject thiz,
@@ -356,21 +466,21 @@ extern "C" JNIEXPORT jbyte* JNICALL Java_com_almalence_plugins_processing_groups
 
 	env->ReleaseByteArrayElements(jlayout, (jbyte*)layout, JNI_ABORT);
 
-	jbyteArray jpixels = NULL;
-	Uint8 * pixels;
+	jintArray jpixels = NULL;
+	Uint32 * pixels;
 
-	jpixels = env->NewByteArray(outWidth * outHeight * 4);
+	jpixels = env->NewIntArray(outWidth * outHeight * 4);
 	LOGD("alloc %d byte argb memory", outWidth * outHeight * 4);
-	pixels = (Uint8 *)env->GetByteArrayElements(jpixels, NULL);
+	pixels = (Uint32 *)env->GetIntArrayElements(jpixels, NULL);
 
 	NV21_to_RGB_scaled(outBuffer, inWidth, inHeight, 0, 0, inWidth, inHeight, outWidth, outHeight, 4, (Uint8 *)pixels);
 
 	free(outBuffer);
 
-	env->ReleaseByteArrayElements(jpixels, (jbyte*)pixels, JNI_ABORT);
+	env->ReleaseIntArrayElements(jpixels, (jint*)pixels, 0);
 
 	LOGD("Preview - end");
-	return (jbyte *)jpixels;
+	return jpixels;
 }
 
 extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_groupshot_AlmaShotSeamless_RealView
@@ -383,12 +493,12 @@ extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_groupsho
 	jbyteArray jlayout
 )
 {
-	LOGD("RealView - start");
+	LOGE("RealView - start");
 
 	Uint8 *layout;
 	int *crop;
 
-	LOGD("alloc %d byte yvu memory", width * height * 3 / 2);
+	LOGE("alloc %d byte yvu memory", width * height * 3 / 2);
 
 	Uint8 *outBuffer = (Uint8 *)malloc(width * height * 3 / 2);
 
@@ -403,14 +513,14 @@ extern "C" JNIEXPORT jint JNICALL Java_com_almalence_plugins_processing_groupsho
 			0,					// full processing, not a quick method
 			&crop[0], &crop[1], &crop[2], &crop[3]) == ALMA_ALL_OK)
 	{
-		LOGD("RealView - ok");
+		LOGE("RealView - ok");
 	}
 	else
 	{
-		LOGD("RealView - error");
+		LOGE("RealView - error");
 	}
 
-	env->ReleaseIntArrayElements(jcrop, (jint*)crop, JNI_ABORT);
+	env->ReleaseIntArrayElements(jcrop, (jint*)crop, 0);
 	env->ReleaseByteArrayElements(jlayout, (jbyte*)layout, JNI_ABORT);
 
 	LOGD("RealView - end");

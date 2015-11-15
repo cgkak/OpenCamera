@@ -14,345 +14,368 @@ The Original Code is collection of files collectively known as Open Camera.
 The Initial Developer of the Original Code is Almalence Inc.
 Portions created by Initial Developer are Copyright (C) 2013 
 by Almalence Inc. All Rights Reserved.
-*/
+ */
 
 package com.almalence.plugins.capture.burst;
 
-import java.util.Date;
+import java.util.Arrays;
 
+import android.annotation.TargetApi;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
-import android.hardware.Camera;
-import android.hardware.Camera.Parameters;
-import android.os.CountDownTimer;
-import android.os.Message;
+import android.hardware.camera2.CaptureResult;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
 /* <!-- +++
-import com.almalence.opencam_plus.MainScreen;
-import com.almalence.opencam_plus.PluginCapture;
-import com.almalence.opencam_plus.PluginManager;
-import com.almalence.opencam_plus.R;
-+++ --> */
+ import com.almalence.opencam_plus.cameracontroller.CameraController;
+ import com.almalence.opencam_plus.ui.GUI.CameraParameter;
+ import com.almalence.opencam_plus.CameraParameters;
+ import com.almalence.opencam_plus.ApplicationScreen;
+ import com.almalence.opencam_plus.ApplicationInterface;
+ import com.almalence.opencam_plus.PluginCapture;
+ import com.almalence.opencam_plus.PluginManager;
+ import com.almalence.opencam_plus.R;
+ +++ --> */
 // <!-- -+-
-import com.almalence.opencam.MainScreen;
+import com.almalence.opencam.cameracontroller.CameraController;
+import com.almalence.opencam.ui.GUI.CameraParameter;
+import com.almalence.opencam.ApplicationInterface;
+import com.almalence.opencam.CameraParameters;
+import com.almalence.opencam.ApplicationScreen;
 import com.almalence.opencam.PluginCapture;
 import com.almalence.opencam.PluginManager;
 import com.almalence.opencam.R;
 //-+- -->
 
-import com.almalence.SwapHeap;
 
 /***
-Implements burst capture plugin - captures predefined number of images
-***/
+ * Implements burst capture plugin - captures predefined number of images
+ ***/
 
 public class BurstCapturePlugin extends PluginCapture
 {
-	private boolean takingAlready=false;
-		
-    //defaul val. value should come from config
-	private int imageAmount = 3;
-    private int pauseBetweenShots = 0;
+	// defaul val. value should come from config
+	private int				imageAmount			= 3;
+	private int				pauseBetweenShots	= 0;
+	private int				preferenceFlashMode;
 
-    private boolean inCapture;
-    private int imagesTaken=0;
-	
-    
+	private static String	sImagesAmountPref;
+	private static String	sPauseBetweenShotsPref;
+
 	public BurstCapturePlugin()
 	{
-		super("com.almalence.plugins.burstcapture",
-			  R.xml.preferences_capture_burst,
-			  0,
-			  R.drawable.gui_almalence_mode_burst,
-			  "Burst images");
-
-		//refreshPreferences();
+		super("com.almalence.plugins.burstcapture", R.xml.preferences_capture_burst, 0,
+				R.drawable.gui_almalence_mode_burst, "Burst images");
 	}
-	
+
+	@Override
+	public void onCreate()
+	{
+		sImagesAmountPref = ApplicationScreen.getAppResources().getString(R.string.Preference_BurstImagesAmount);
+		sPauseBetweenShotsPref = ApplicationScreen.getAppResources().getString(R.string.Preference_BurstPauseBetweenShots);
+	}
+
+	@Override
+	public void onStart()
+	{
+		refreshPreferences();
+	}
+
 	@Override
 	public void onResume()
 	{
-		takingAlready = false;
-		imagesTaken=0;
+		imagesTaken = 0;
+		imagesTakenRAW = 0;
 		inCapture = false;
-		refreshPreferences();
+		aboutToTakePicture = false;
+		
+		isAllImagesTaken = false;
+		isAllCaptureResultsCompleted = true;
+
+		if (CameraController.isUseCamera2() && CameraController.isNexus5or6)
+		{
+			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ApplicationScreen.getMainContext());
+			preferenceFlashMode = prefs.getInt(ApplicationScreen.sFlashModePref, ApplicationScreen.sDefaultFlashValue);
+			
+			SharedPreferences.Editor editor = prefs.edit();
+			editor.putInt(ApplicationScreen.sFlashModePref, CameraParameters.FLASH_MODE_OFF);
+			editor.commit();
+		}
+
+		// refreshPreferences();
+		if(captureRAW && CameraController.isRAWCaptureSupported())
+			ApplicationScreen.setCaptureFormat(CameraController.RAW);
+		else
+		{
+			captureRAW = false;
+			ApplicationScreen.setCaptureFormat(CameraController.JPEG);
+		}
 	}
-	
+
+	@Override
+	public void onGUICreate()
+	{
+		if (CameraController.isUseCamera2() && CameraController.isNexus5or6)
+			ApplicationScreen.instance.disableCameraParameter(CameraParameter.CAMERA_PARAMETER_FLASH, true, false, true);
+	}
+
+	@Override
+	public void setupCameraParameters()
+	{
+		try
+		{
+			int[] flashModes = CameraController.getSupportedFlashModes();
+			if (flashModes != null && flashModes.length > 0 && CameraController.isUseCamera2()
+					&& CameraController.isNexus5or6)
+			{
+				CameraController.setCameraFlashMode(CameraParameters.FLASH_MODE_OFF);
+
+				SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ApplicationScreen.getMainContext());
+				SharedPreferences.Editor editor = prefs.edit();
+				editor.putInt(ApplicationScreen.sFlashModePref, CameraParameters.FLASH_MODE_OFF);
+				editor.commit();
+			}
+		} catch (RuntimeException e)
+		{
+			Log.e("CameraTest", "ApplicationScreen.setupCamera unable to setFlashMode");
+		}
+	}
+
+	@Override
+	public void onPause()
+	{
+		if (CameraController.isUseCamera2() && CameraController.isNexus5or6) {
+			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ApplicationScreen.getMainContext());
+			prefs.edit().putInt(ApplicationScreen.sFlashModePref, preferenceFlashMode).commit();
+			CameraController.setCameraFlashMode(preferenceFlashMode);
+		}
+	}
+
 	private void refreshPreferences()
 	{
 		try
 		{
-			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainScreen.mainContext);
-			imageAmount = Integer.parseInt(prefs.getString("burstImagesAmount", "3"));
-			pauseBetweenShots = Integer.parseInt(prefs.getString("burstPauseBetweenShots", "0"));
-		}
-		catch (Exception e)
+			SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ApplicationScreen.getMainContext());
+			imageAmount = Integer.parseInt(prefs.getString(sImagesAmountPref, "3"));
+			pauseBetweenShots = Integer.parseInt(prefs.getString(sPauseBetweenShotsPref, "0"));
+			captureRAW = prefs.getBoolean(ApplicationScreen.sCaptureRAWPref, false);
+		} catch (Exception e)
 		{
-			Log.v("Burst capture", "Cought exception " + e.getMessage());
+			Log.e("Burst capture", "Cought exception " + e.getMessage());
 		}
-		
-        switch (imageAmount)
-        {
-        case 3:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst3;
-        	break;
-        case 5:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst5;
-        	break;
-        case 10:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst10;
-        	break;
-        case 15:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst15;
-        	break;
-        case 20:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst20;
-        	break;
-        }       
-	}
-	
-	@Override
-	public void onQuickControlClick()
-	{        
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainScreen.mainContext);
-        int val = Integer.parseInt(prefs.getString("burstImagesAmount", "1"));
-        int selected = 0;
-        switch (val)
-        {
-        case 3:
-        	selected=0;
-        	break;
-        case 5:
-        	selected=1;
-        	break;
-        case 10:
-        	selected=2;
-        	break;
-        case 15:
-        	selected=3;
-        	break;
-        case 20:
-        	selected=4;
-        	break;
-        }
-        selected= (selected+1)%5;
-        
-    	Editor editor = prefs.edit();
-    	switch (selected)
-        {
-        case 0:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst3;
-        	editor.putString("burstImagesAmount", "3");
-        	break;
-        case 1:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst5;
-        	editor.putString("burstImagesAmount", "5");
-        	break;
-        case 2:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst10;
-        	editor.putString("burstImagesAmount", "10");
-        	break;
-        case 3:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst15;
-        	editor.putString("burstImagesAmount", "15");
-        	break;
-        case 4:
-        	quickControlIconID = R.drawable.gui_almalence_mode_burst20;
-        	editor.putString("burstImagesAmount", "20");
-        	break;
-        }
-    	editor.commit();
+
+		switch (imageAmount)
+		{
+		case 3:
+			quickControlIconID = R.drawable.gui_almalence_mode_burst3;
+			break;
+		case 5:
+			quickControlIconID = R.drawable.gui_almalence_mode_burst5;
+			break;
+		case 10:
+			quickControlIconID = R.drawable.gui_almalence_mode_burst10;
+			break;
+		case 15:
+			quickControlIconID = R.drawable.gui_almalence_mode_burst15;
+			break;
+		case 20:
+			quickControlIconID = R.drawable.gui_almalence_mode_burst20;
+			break;
+		default:
+			break;
+		}
 	}
 
-	public boolean delayedCaptureSupported(){return true;}
-	
 	@Override
-	public void OnShutterClick()
+	public void onQuickControlClick()
 	{
-		if (inCapture == false)
-        {
-			Date curDate = new Date();
-			SessionID = curDate.getTime();
-			
-			MainScreen.thiz.MuteShutter(true);
-			
-			String fm = MainScreen.thiz.getFocusMode();
-			if(takingAlready == false && (MainScreen.getFocusState() == MainScreen.FOCUS_STATE_IDLE ||
-					MainScreen.getFocusState() == MainScreen.FOCUS_STATE_FOCUSING)
-					&& fm != null
-					&& !(fm.equals(Parameters.FOCUS_MODE_INFINITY)
-	        				|| fm.equals(Parameters.FOCUS_MODE_FIXED)
-	        				|| fm.equals(Parameters.FOCUS_MODE_EDOF)
-	        				|| fm.equals(Parameters.FOCUS_MODE_CONTINUOUS_PICTURE)
-	        				|| fm.equals(Parameters.FOCUS_MODE_CONTINUOUS_VIDEO))
-	        				&& !MainScreen.getAutoFocusLock())
-				takingAlready = true;			
-			else if(takingAlready == false)
-			{
-				takePicture();
-			}
-        }
+		SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(ApplicationScreen.getMainContext());
+		int val = Integer.parseInt(prefs.getString(sImagesAmountPref, "1"));
+		int selected = 0;
+		switch (val)
+		{
+		case 3:
+			selected = 0;
+			break;
+		case 5:
+			selected = 1;
+			break;
+		case 10:
+			selected = 2;
+			break;
+		case 15:
+			selected = 3;
+			break;
+		case 20:
+			selected = 4;
+			break;
+		default:
+			break;
+		}
+		selected = (selected + 1) % 5;
+
+		Editor editor = prefs.edit();
+		switch (selected)
+		{
+		case 0:
+			quickControlIconID = R.drawable.gui_almalence_mode_burst3;
+			editor.putString("burstImagesAmount", "3");
+			break;
+		case 1:
+			quickControlIconID = R.drawable.gui_almalence_mode_burst5;
+			editor.putString("burstImagesAmount", "5");
+			break;
+		case 2:
+			quickControlIconID = R.drawable.gui_almalence_mode_burst10;
+			editor.putString("burstImagesAmount", "10");
+			break;
+		case 3:
+			quickControlIconID = R.drawable.gui_almalence_mode_burst15;
+			editor.putString("burstImagesAmount", "15");
+			break;
+		case 4:
+			quickControlIconID = R.drawable.gui_almalence_mode_burst20;
+			editor.putString("burstImagesAmount", "20");
+			break;
+		default:
+			break;
+		}
+		editor.commit();
 	}
-	
-	
+
+	public boolean delayedCaptureSupported()
+	{
+		return true;
+	}
+
 	public void takePicture()
 	{
 		refreshPreferences();
 		inCapture = true;
-		takingAlready = true;
-		if (imagesTaken==0 || pauseBetweenShots==0)
+		resultCompleted = 0;
+
+		int[] pause = new int[imageAmount];
+		Arrays.fill(pause, pauseBetweenShots);
+		createRequestIDList(captureRAW? imageAmount * 2 : imageAmount);
+		if (captureRAW)
 		{
-			new CountDownTimer(50, 50) {
-			     public void onTick(long millisUntilFinished) {}
-			     public void onFinish() 
-			     {
-					Message msg = new Message();
-					msg.arg1 = PluginManager.MSG_NEXT_FRAME;
-					msg.what = PluginManager.MSG_BROADCAST;
-					MainScreen.H.sendMessage(msg);					
-			     }
-			  }.start();
-		}
-		else
-		{
-			new CountDownTimer(pauseBetweenShots, pauseBetweenShots) {
-			     public void onTick(long millisUntilFinished) {}
-			     public void onFinish() 
-			     {
-			    	 Message msg = new Message();
-			    	 msg.arg1 = PluginManager.MSG_NEXT_FRAME;
-			    	 msg.what = PluginManager.MSG_BROADCAST;
-			    	 MainScreen.H.sendMessage(msg);
-			     }
-			  }.start();
-		}
+			CameraController.captureImagesWithParams(imageAmount, CameraController.RAW, pause, null, null, null, false, true,
+					true);
+		} else
+			CameraController.captureImagesWithParams(imageAmount, CameraController.JPEG, pause, null, null, null, false, true,
+					true);
 	}
 
 	@Override
-	public void onPictureTaken(byte[] paramArrayOfByte, Camera paramCamera)
+	public void onImageTaken(int frame, byte[] frameData, int frame_len, int format)
 	{
-		imagesTaken++;
-		int frame_len = paramArrayOfByte.length;
-		int frame = SwapHeap.SwapToHeap(paramArrayOfByte);
-    	
-    	if (frame == 0)
-    	{
-    		Log.i("Burst", "Load to heap failed");
-    		Message message = new Message();
-    		message.obj = String.valueOf(SessionID);
-			message.what = PluginManager.MSG_CAPTURE_FINISHED;
-			MainScreen.H.sendMessage(message);
-			
-			imagesTaken=0;
-			MainScreen.thiz.MuteShutter(false);
-			inCapture = false;
+		if (frame == 0)
+		{
+			Log.d("Burst", "Load to heap failed");
+			PluginManager.getInstance().sendMessage(ApplicationInterface.MSG_CAPTURE_FINISHED, String.valueOf(SessionID));
+
+			imagesTaken = 0;
+			imagesTakenRAW = 0;
+			resultCompleted = 0;
+			ApplicationScreen.instance.muteShutter(false);
 			return;
-    	}
-    	String frameName = "frame" + imagesTaken;
-    	String frameLengthName = "framelen" + imagesTaken;
-    	
-    	PluginManager.getInstance().addToSharedMem(frameName+String.valueOf(SessionID), String.valueOf(frame));
-    	PluginManager.getInstance().addToSharedMem(frameLengthName+String.valueOf(SessionID), String.valueOf(frame_len));
-    	PluginManager.getInstance().addToSharedMem("frameorientation" + imagesTaken + String.valueOf(SessionID), String.valueOf(MainScreen.guiManager.getDisplayOrientation()));
-    	PluginManager.getInstance().addToSharedMem("framemirrored" + imagesTaken + String.valueOf(SessionID), String.valueOf(MainScreen.getCameraMirrored()));
-    	
-    	if(imagesTaken == 1)
-    		PluginManager.getInstance().addToSharedMem_ExifTagsFromJPEG(paramArrayOfByte, SessionID);
-		
+		}
+
+		boolean isRAW = (format == CameraController.RAW);
+		if (isRAW)
+			imagesTakenRAW++;
+
+		imagesTaken++;
+		PluginManager.getInstance().addToSharedMem("frame" + imagesTaken + SessionID, String.valueOf(frame));
+		PluginManager.getInstance().addToSharedMem("framelen" + imagesTaken + SessionID, String.valueOf(frame_len));
+
+		PluginManager.getInstance().addToSharedMem("frameisraw" + imagesTaken + SessionID, String.valueOf(isRAW));
+
+		PluginManager.getInstance().addToSharedMem("frameorientation" + imagesTaken + SessionID,
+				String.valueOf(ApplicationScreen.getGUIManager().getImageDataOrientation()));
+		PluginManager.getInstance().addToSharedMem("framemirrored" + imagesTaken + SessionID,
+				String.valueOf(CameraController.isFrontCamera()));
+
 		try
 		{
-			paramCamera.startPreview();
-		}
-		catch (RuntimeException e)
+			CameraController.startCameraPreview();
+		} catch (RuntimeException e)
 		{
-			Log.i("Burst", "StartPreview fail");
-			Message message = new Message();
-			message.obj = String.valueOf(SessionID);
-			message.what = PluginManager.MSG_CAPTURE_FINISHED;
-			MainScreen.H.sendMessage(message);
-			
-			imagesTaken=0;
-			MainScreen.thiz.MuteShutter(false);
-			inCapture = false;
+			Log.e("Burst", "StartPreview fail");
+			PluginManager.getInstance().sendMessage(ApplicationInterface.MSG_CAPTURE_FINISHED, String.valueOf(SessionID));
+
+			imagesTaken = 0;
+			imagesTakenRAW = 0;
+			resultCompleted = 0;
+			ApplicationScreen.instance.muteShutter(false);
 			return;
 		}
-		if (imagesTaken < imageAmount)
-			MainScreen.H.sendEmptyMessage(PluginManager.MSG_TAKE_PICTURE);
-		else
+
+		if ((captureRAW && imagesTaken >= (imageAmount * 2)) || (!captureRAW && imagesTaken >= imageAmount))
 		{
-			PluginManager.getInstance().addToSharedMem("amountofcapturedframes"+String.valueOf(SessionID), String.valueOf(imagesTaken));
-			
-			Message message = new Message();
-			message.obj = String.valueOf(SessionID);
-			message.what = PluginManager.MSG_CAPTURE_FINISHED;
-			MainScreen.H.sendMessage(message);
-			
-			imagesTaken=0;
-			inCapture = false;
-		}
-		takingAlready = false;
-	}
+			if(isAllCaptureResultsCompleted)
+			{
+				PluginManager.getInstance().addToSharedMem("amountofcapturedframes" + SessionID,
+						String.valueOf(imagesTaken));
+				PluginManager.getInstance().addToSharedMem("amountofcapturedrawframes" + SessionID,
+						String.valueOf(imagesTakenRAW));
 	
+				PluginManager.getInstance().sendMessage(ApplicationInterface.MSG_CAPTURE_FINISHED, String.valueOf(SessionID));
+	
+				imagesTaken = 0;
+				imagesTakenRAW = 0;
+				resultCompleted = 0;
+				inCapture = false;
+				
+				isAllImagesTaken = false;
+			}
+			else
+				isAllImagesTaken = true;
+		}
+
+	}
+
+	@TargetApi(21)
 	@Override
-	public void onAutoFocus(boolean paramBoolean, Camera paramCamera)
+	public void onCaptureCompleted(CaptureResult result)
 	{
-		if(takingAlready == true)
-			takePicture();
+		isAllCaptureResultsCompleted = false;
 		
-//		if(takingAlready == true && paramBoolean == true)
-//			takePicture();
-//		else if(takingAlready == true)
-//		{
-//			takingAlready = false;
-//			MainScreen.guiManager.lockControls = false;
-//		}
+		int requestID = requestIDArray[resultCompleted];
+		resultCompleted++;
+		if (result.getSequenceId() == requestID)
+		{
+			PluginManager.getInstance().addToSharedMemExifTagsFromCaptureResult(result, SessionID, resultCompleted);
+		}
+
+		if (captureRAW)
+			PluginManager.getInstance().addRAWCaptureResultToSharedMem("captureResult" + resultCompleted + SessionID,
+					result);
+		
+		if ((captureRAW && resultCompleted >= (imageAmount * 2)) || (!captureRAW && resultCompleted >= imageAmount))
+		{
+			isAllCaptureResultsCompleted = true;
+			
+			if(isAllImagesTaken)
+			{
+				PluginManager.getInstance().addToSharedMem("amountofcapturedframes" + SessionID,
+						String.valueOf(imagesTaken));
+				PluginManager.getInstance().addToSharedMem("amountofcapturedrawframes" + SessionID,
+						String.valueOf(imagesTakenRAW));
+				
+				PluginManager.getInstance().sendMessage(ApplicationInterface.MSG_CAPTURE_FINISHED, String.valueOf(SessionID));
+				
+				inCapture = false;
+				resultCompleted = 0;
+				imagesTaken = 0;
+				isAllImagesTaken = false;
+			}
+		}
 	}
 
 	@Override
-	public boolean onBroadcast(int arg1, int arg2)
+	public void onPreviewFrame(byte[] data)
 	{
-		if (arg1 == PluginManager.MSG_NEXT_FRAME)
-		{
-			Camera camera = MainScreen.thiz.getCamera();
-			if (camera != null)
-			{
-				// play tick sound
-				MainScreen.guiManager.showCaptureIndication();
-        		MainScreen.thiz.PlayShutter();
-        		
-        		try {
-        			camera.setPreviewCallback(null);
-        			camera.takePicture(null, null, null, MainScreen.thiz);
-				}catch (Exception e) {
-					e.printStackTrace();
-					Log.e("MainScreen takePicture() failed", "takePicture: " + e.getMessage());
-					inCapture = false;
-					takingAlready = false;
-					Message msg = new Message();
-	    			msg.arg1 = PluginManager.MSG_CONTROL_UNLOCKED;
-	    			msg.what = PluginManager.MSG_BROADCAST;
-	    			MainScreen.H.sendMessage(msg);	    			
-	    			MainScreen.guiManager.lockControls = false;
-				}
-			}
-			else
-			{
-				inCapture = false;
-				takingAlready = false;
-				Message msg = new Message();
-    			msg.arg1 = PluginManager.MSG_CONTROL_UNLOCKED;
-    			msg.what = PluginManager.MSG_BROADCAST;
-    			MainScreen.H.sendMessage(msg);
-    			
-    			MainScreen.guiManager.lockControls = false;
-			}			
-    		return true;
-		}
-		return false;
 	}
-	
-	@Override
-	public void onPreviewFrame(byte[] data, Camera paramCamera){}	
 }
